@@ -31,6 +31,8 @@
   let deckCounts = [{}, {}];
   let buildFor = 0;
   let deckTab = 'classic';        // classic | extra
+  let deckScroll = 0, sbDrag = null, sbGeom = null;
+  const DECK_VIEW = { y: 112, h: 676 };
   let placeFor = 0;
   let pass = null;                // {text, cb} hotseat hand-over overlay
   let confirmMenu = false, paused = false;
@@ -293,7 +295,7 @@
 
   /* ---- deck builder ---- */
   function startDeckBuild(m) {
-    mode = m; buildFor = 0; screen = 'deck'; deckTab = 'classic';
+    mode = m; buildFor = 0; screen = 'deck'; deckTab = 'classic'; deckScroll = 0;
     if (!total(deckCounts[0])) deckCounts[0] = C.randomDeck();
     deckCounts[1] = {};
   }
@@ -307,13 +309,20 @@
     const list = C.MIN.filter(d => d.id !== 'villager' && !!d.extra === (deckTab === 'extra'));
     if (deckTab === 'classic') list.push(C.DEF.villager); // king: info card only, always in your deck
     const nExtra = C.MIN.filter(d => d.extra).length;
-    button(560, 30, 170, 46, 'Classic', () => { deckTab = 'classic'; }, { size: 20, col: deckTab === 'classic' ? '#81b64c' : '#454441', hot: deckTab === 'classic' ? '#95c95d' : '#55534f' });
-    button(744, 30, 190, 46, 'Extras (' + nExtra + ')', () => { deckTab = 'extra'; }, { size: 20, col: deckTab === 'extra' ? '#81b64c' : '#454441', hot: deckTab === 'extra' ? '#95c95d' : '#55534f' });
+    button(560, 30, 170, 46, 'Classic', () => { deckTab = 'classic'; deckScroll = 0; }, { size: 20, col: deckTab === 'classic' ? '#81b64c' : '#454441', hot: deckTab === 'classic' ? '#95c95d' : '#55534f' });
+    button(744, 30, 190, 46, 'Extras (' + nExtra + ')', () => { deckTab = 'extra'; deckScroll = 0; }, { size: 20, col: deckTab === 'extra' ? '#81b64c' : '#454441', hot: deckTab === 'extra' ? '#95c95d' : '#55534f' });
     let hov = null;
+    const contentH = Math.ceil(list.length / 6) * 205 + 8;
+    const maxScroll = Math.max(0, contentH - DECK_VIEW.h);
+    deckScroll = Math.max(0, Math.min(maxScroll, deckScroll));
+    ctx.save();
+    ctx.beginPath(); ctx.rect(30, DECK_VIEW.y, 980, DECK_VIEW.h); ctx.clip();
     list.forEach((d, i) => {
       const col = i % 6, row = Math.floor(i / 6);
-      const x = 40 + col * 163, y = 120 + row * 205, w = 153, h = 195;
-      const over = inRect(mouse.x, mouse.y, x, y, w, h);
+      const x = 40 + col * 163, y = 120 + row * 205 - deckScroll, w = 153, h = 195;
+      if (y + h < DECK_VIEW.y || y > DECK_VIEW.y + DECK_VIEW.h) return;
+      const nb = btns.length;
+      const over = inRect(mouse.x, mouse.y, x, y, w, h) && mouse.y >= DECK_VIEW.y && mouse.y <= DECK_VIEW.y + DECK_VIEW.h;
       if (over) hov = d;
       if (d.id === 'villager') {
         panel(x, y, w, h);
@@ -337,7 +346,22 @@
       button(x + w - 48, y + 148, 38, 36, '+', () => { if (cnt < lim && n < C.DECK_SIZE) counts[d.id] = cnt + 1; }, { enabled: cnt < lim && n < C.DECK_SIZE, size: 24 });
       txt(String(cnt), x + w / 2, y + 178, 28, cnt ? ACC : DIM, 'center');
       if (lim < 99) txt('max ' + lim, x + w - 8, y + 24, 14, '#ff7f75', 'right');
+      // buttons clipped by the scroll area must not be clickable
+      for (let bi = btns.length - 1; bi >= nb; bi--) {
+        const b = btns[bi];
+        if (b.y < DECK_VIEW.y || b.y + b.h > DECK_VIEW.y + DECK_VIEW.h) btns.splice(bi, 1);
+      }
     });
+    ctx.restore();
+    if (maxScroll > 0) {
+      const tx = 1013, tw = 10;
+      rr(tx, DECK_VIEW.y, tw, DECK_VIEW.h, 5); ctx.fillStyle = '#262522'; ctx.fill();
+      const th = Math.max(60, DECK_VIEW.h * DECK_VIEW.h / contentH);
+      const ty = DECK_VIEW.y + (DECK_VIEW.h - th) * (deckScroll / maxScroll);
+      const hot = sbDrag || inRect(mouse.x, mouse.y, tx - 6, DECK_VIEW.y, tw + 12, DECK_VIEW.h);
+      rr(tx, ty, tw, th, 5); ctx.fillStyle = hot ? '#95c95d' : '#81b64c'; ctx.fill();
+      sbGeom = { tx, tw, ty, th, maxScroll };
+    } else sbGeom = null;
     hoverNext = hov;
     panel(1030, 110, 550, 660);
     if (hov) drawInfo(hov, 1058, 135, 500);
@@ -856,7 +880,19 @@
     const r = canvas.getBoundingClientRect();
     return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
   }
-  canvas.addEventListener('pointermove', e => { mouse = pos(e); });
+  canvas.addEventListener('pointermove', e => {
+    mouse = pos(e);
+    if (sbDrag && sbGeom) {
+      const track = DECK_VIEW.h - sbGeom.th;
+      deckScroll = Math.max(0, Math.min(sbGeom.maxScroll, sbDrag.start + (mouse.y - sbDrag.y0) * sbGeom.maxScroll / track));
+    }
+  });
+  canvas.addEventListener('wheel', e => {
+    if (screen !== 'deck') return;
+    e.preventDefault();
+    deckScroll += e.deltaY * (e.deltaMode === 1 ? 30 : 1);
+  }, { passive: false });
+  window.addEventListener('pointerup', () => { sbDrag = null; });
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('pointerup', e => {
     if (e.button !== 2 || !drag) return;
@@ -882,6 +918,14 @@
       return;
     }
     if (pending > 0) return;
+    if (screen === 'deck' && sbGeom && inRect(mouse.x, mouse.y, sbGeom.tx - 8, DECK_VIEW.y, sbGeom.tw + 16, DECK_VIEW.h)) {
+      if (mouse.y < sbGeom.ty || mouse.y > sbGeom.ty + sbGeom.th) {
+        const track = DECK_VIEW.h - sbGeom.th;
+        deckScroll = Math.max(0, Math.min(sbGeom.maxScroll, (mouse.y - DECK_VIEW.y - sbGeom.th / 2) / track * sbGeom.maxScroll));
+      }
+      sbDrag = { y0: mouse.y, start: deckScroll };
+      return;
+    }
     for (let i = prevBtns.length - 1; i >= 0; i--) {
       const b = prevBtns[i];
       if (inRect(mouse.x, mouse.y, b.x, b.y, b.w, b.h)) { if (b.enabled) b.fn(); return; }
