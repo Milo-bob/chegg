@@ -21,7 +21,7 @@
     img[key] = i;
   }
   C.MIN.forEach(d => load(d.id, d.img));
-  ['basalt', 'lightgrayconcrete', 'blueconcrete', 'lightblueconcrete', 'redconcrete', 'orangeconcrete']
+  ['basalt', 'calcite', 'blueconcrete', 'lightblueconcrete', 'redconcrete', 'orangeconcrete']
     .forEach(t => load(t, 'assets/tiles/' + t + '.jpg'));
   ['redstone_lamp', 'redstone_lamp_on'].forEach(t => load(t, 'assets/tiles/' + t + '.png'));
 
@@ -136,7 +136,7 @@
     let t, dim = 0;
     if (y >= ROWS - 2) { t = (x + y) % 2 ? 'blueconcrete' : 'lightblueconcrete'; dim = 0.32; }
     else if (y < 2) { t = (x + y) % 2 ? 'redconcrete' : 'orangeconcrete'; dim = 0.32; }
-    else { t = C.dark(x, y) ? 'basalt' : 'lightgrayconcrete'; dim = C.dark(x, y) ? 0 : 0.12; }
+    else { t = C.dark(x, y) ? 'basalt' : 'calcite'; dim = C.dark(x, y) ? 0 : 0.18; }
     const i = img[t];
     if (i && i.complete && i.naturalWidth) ctx.drawImage(i, px, py, CELL, CELL);
     else rect(px, py, CELL, CELL, '#444');
@@ -224,12 +224,20 @@
   }
 
   /* ---------- screens ---------- */
-  function drawBackdrop() {
+  function drawBackdrop(tiled) {
     ctx.fillStyle = '#302e2b'; ctx.fillRect(0, 0, W, H);
+    if (!tiled) return;
+    // main menu: the board's checker pattern, darkened and flattened so it stays calm
+    const dk = img.basalt, lt = img.calcite;
+    for (let x = 0; x < 20; x++) for (let y = 0; y < 12; y++) {
+      const i = (x + y) % 2 ? dk : lt;
+      if (i && i.complete && i.naturalWidth) ctx.drawImage(i, x * 80, y * 80, 80, 80);
+    }
+    rect(0, 0, W, H, 'rgba(38,36,33,0.84)');
   }
 
   function drawMenu() {
-    drawBackdrop();
+    drawBackdrop(true);
     const ids = ['creeper', 'zombie', 'enderman', 'villager', 'wither', 'pig', 'cat'];
     ids.forEach((id, i) => {
       const cx = 470 + i * 110, cy = 300 + Math.sin(Date.now() / 600 + i) * 8;
