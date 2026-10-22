@@ -176,17 +176,18 @@ const Chegg = (function () {
   }
 
   /* ---------- removal & effects ---------- */
-  function kill(m, by) {
+  // force = true (Ender Dragon spawn) ignores every protection: indestructible, totem, shell, lightning rod
+  function kill(m, by, force) {
     if (!m || !m.alive) return;
-    if (m.id === 'sulfurcube') return;                       // indestructible
-    if (m.id === 'coppergolem' && G.aoe) return;             // lightning rod: immune to area damage
-    if (m.id === 'evoker' && m.totem !== false) {            // Totem of Undying
+    if (m.id === 'sulfurcube' && !force) return;                       // indestructible
+    if (m.id === 'coppergolem' && G.aoe && !force) return;             // lightning rod: immune to area damage
+    if (m.id === 'evoker' && m.totem !== false && !force) {            // Totem of Undying
       m.totem = false;
       addFx('flash', m.x, m.y);
       log(NAMES[m.owner] + ' Evoker popped its Totem of Undying.');
       return;
     }
-    if (m.id === 'armadillo' && m.shell !== false && by && by !== m) {
+    if (m.id === 'armadillo' && m.shell !== false && by && by !== m && !force) {
       m.shell = false;
       addFx('flash', m.x, m.y);
       log(NAMES[m.owner] + ' Armadillo\'s shell absorbed the hit.');
@@ -457,7 +458,7 @@ const Chegg = (function () {
     if (opt.id === 'enderdragon') {
       addFx('flash', m.x, m.y);
       G.aoe = true;
-      ownArmy(pi, m).forEach(o => kill(o));
+      ownArmy(pi, m).forEach(o => kill(o, null, true));
       G.aoe = false;
       log('Ender Dragon devoured its own army.');
     }

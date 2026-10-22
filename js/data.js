@@ -350,7 +350,7 @@ const MINIONS = [
     img:"assets/minions/enderdragon.png",
     move:"Moves like a chess queen: any distance in a straight lateral or diagonal line, but it can't pass through other minions.",
     attack:"Destroys the first enemy along any lateral or diagonal line (it can't shoot through other minions). Costs 1 mana like any attack.",
-    ability:"The final boss. On spawn it devours your own army: every other minion you control is destroyed (your Villager king is safe). Max 1 per deck.",
+    ability:"The final boss. On spawn it devours your own army: every other minion you control is destroyed, no matter what protects it (Totem, shell, lightning rod, even the Sulfur Cube). Only your Villager king is safe. Max 1 per deck.",
     movePattern:QUEEN_MOVES, attackPattern:QUEEN_MOVES, copyLimit:"Deck limit: max 1 per deck"
   }
 ];

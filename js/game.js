@@ -52,9 +52,41 @@
   let timeCtl = 0;
   const clock = { on: false, ms: [0, 0], last: 0 };
 
+  /* ---- player level: each level unlocks one extra minion (cheapest first) ---- */
+  const UNLOCK_ORDER = C.MIN.filter(d => d.extra).sort((a, b) => a.cost - b.cost);
+  const XP_WIN = 150, XP_LOSS = 50;
+  const xpToNext = lv => 100 + 10 * lv;
+  const UNLOCK_ALL = /[?&]unlock=all/.test(location.search);
+  let prog = { xp: 0 }, lastAward = null;
+  try {
+    const p = JSON.parse(localStorage.getItem('chegg_prog_v1') || 'null');
+    if (p && typeof p.xp === 'number') prog = p;
+  } catch (e) { /* storage unavailable */ }
+  function levelOf(xp) {
+    let lv = 0;
+    while (lv < UNLOCK_ORDER.length && xp >= xpToNext(lv)) { xp -= xpToNext(lv); lv++; }
+    return { level: lv, into: xp, need: lv < UNLOCK_ORDER.length ? xpToNext(lv) : 0 };
+  }
+  const myLevel = () => (UNLOCK_ALL ? UNLOCK_ORDER.length : levelOf(prog.xp).level);
+  function unlockLevelOf(id) { return UNLOCK_ORDER.findIndex(d => d.id === id) + 1; }   // level needed (0 = classic)
+  const isUnlocked = id => !C.DEF[id].extra || unlockLevelOf(id) <= myLevel();
+  const unlockedSet = () => { const s = {}; C.MIN.forEach(d => { if (isUnlocked(d.id)) s[d.id] = true; }); return s; };
+  function awardXp(won) {
+    const before = levelOf(prog.xp).level;
+    const gain = won ? XP_WIN : XP_LOSS;
+    prog.xp += gain;
+    try { localStorage.setItem('chegg_prog_v1', JSON.stringify(prog)); } catch (e) { /* ignore */ }
+    const after = levelOf(prog.xp).level;
+    lastAward = { gain, level: after, unlocked: UNLOCK_ORDER.slice(before, after).map(d => d.name) };
+  }
+  function stripLocked(counts) {
+    const out = {};
+    Object.keys(counts).forEach(id => { if (C.DEF[id] && isUnlocked(id)) out[id] = counts[id]; });
+    return out;
+  }
   try {
     const saved = JSON.parse(localStorage.getItem('chegg_deck_v1') || 'null');
-    if (saved && typeof saved === 'object') deckCounts[0] = saved;
+    if (saved && typeof saved === 'object') deckCounts[0] = stripLocked(saved);
   } catch (e) { /* storage unavailable */ }
   function saveDeck() {
     try { localStorage.setItem('chegg_deck_v1', JSON.stringify(deckCounts[0])); } catch (e) { /* ignore */ }
@@ -266,6 +298,13 @@
         { size: 18, col: on ? '#81b64c' : '#454441', hot: on ? '#95c95d' : '#55534f' });
     });
     drawAccountChip();
+    {
+      const L = levelOf(prog.xp), full = L.level >= UNLOCK_ORDER.length;
+      txt('Level ' + myLevel(), 40, 52, 28, '#fff', 'left');
+      rect(40, 64, 220, 10, '#1f1e1b');
+      rect(40, 64, full || UNLOCK_ALL ? 220 : 220 * L.into / L.need, 10, GREEN);
+      txt(UNLOCK_ALL ? 'All extras unlocked (test mode)' : full ? 'All extra cards unlocked' : L.into + ' / ' + L.need + ' XP  \u00B7  next: ' + UNLOCK_ORDER[L.level].name, 40, 96, 15, DIM, 'left');
+    }
     txt('Based on the Minecraft minigame CHEGG by Gerg', W / 2, 850, 16, DIM, 'center');
   }
 
@@ -296,6 +335,7 @@
   /* ---- deck builder ---- */
   function startDeckBuild(m) {
     mode = m; buildFor = 0; screen = 'deck'; deckTab = 'classic'; botInfo = null; deckScroll = 0;
+    deckCounts[0] = stripLocked(deckCounts[0]);
     if (!total(deckCounts[0])) deckCounts[0] = C.randomDeck();
     deckCounts[1] = {};
   }
@@ -308,9 +348,9 @@
     txt('Pick ' + C.DECK_SIZE + ' minions — ' + n + '/' + C.DECK_SIZE + '   (your Villager king is added for free)', 40, 98, 22, n === C.DECK_SIZE ? '#6dff8f' : '#ddd');
     const list = C.MIN.filter(d => d.id !== 'villager' && !!d.extra === (deckTab === 'extra'));
     if (deckTab === 'classic') list.push(C.DEF.villager); // king: info card only, always in your deck
-    const nExtra = C.MIN.filter(d => d.extra).length;
+    const nExtra = C.MIN.filter(d => d.extra && isUnlocked(d.id)).length + '/' + UNLOCK_ORDER.length;
     button(560, 30, 170, 46, 'Classic', () => { deckTab = 'classic'; deckScroll = 0; }, { size: 20, col: deckTab === 'classic' ? '#81b64c' : '#454441', hot: deckTab === 'classic' ? '#95c95d' : '#55534f' });
-    button(744, 30, 190, 46, 'Extras (' + nExtra + ')', () => { deckTab = 'extra'; deckScroll = 0; }, { size: 20, col: deckTab === 'extra' ? '#81b64c' : '#454441', hot: deckTab === 'extra' ? '#95c95d' : '#55534f' });
+    button(744, 30, 190, 46, 'Extras ' + nExtra, () => { deckTab = 'extra'; deckScroll = 0; }, { size: 20, col: deckTab === 'extra' ? '#81b64c' : '#454441', hot: deckTab === 'extra' ? '#95c95d' : '#55534f' });
     let hov = null;
     const contentH = Math.ceil(list.length / 6) * 205 + 8;
     const maxScroll = Math.max(0, contentH - DECK_VIEW.h);
@@ -332,6 +372,17 @@
         txt('Your king', x + w / 2, y + 138, 16, ACC, 'center');
         txt('always in play', x + w / 2, y + 162, 15, DIM, 'center');
         txt('free', x + w - 8, y + 24, 14, GREEN, 'right');
+        return;
+      }
+      if (!isUnlocked(d.id)) {
+        panel(x, y, w, h);
+        slot(x + w / 2 - 38, y + 14, 76, 76);
+        ctx.globalAlpha = 0.28; sprite(d.id, x + w / 2, y + 52, 62); ctx.globalAlpha = 1;
+        txt('LOCKED', x + w / 2, y + 58, 18, '#fff', 'center');
+        txt(d.name, x + w / 2, y + 116, 20, DIM, 'center');
+        txt('Cost ' + d.cost, x + w / 2, y + 136, 16, DIM, 'center');
+        txt('Unlocks at level ' + unlockLevelOf(d.id), x + w / 2, y + 170, 16, '#ff7f75', 'center');
+        if (over) hov = d;
         return;
       }
       const cnt = counts[d.id] || 0;
@@ -367,11 +418,11 @@
     if (hov) drawInfo(hov, 1058, 135, 500);
     else txt('Hover a minion for details', 1305, 440, 22, DIM, 'center');
     button(40, 800, 200, 60, 'Back', () => { screen = 'menu'; });
-    button(260, 800, 220, 60, 'Random', () => { deckCounts[buildFor] = C.randomDeck(deckTab === 'extra'); });
+    button(260, 800, 220, 60, 'Random', () => { deckCounts[buildFor] = C.randomDeck(deckTab === 'extra', unlockedSet()); });
     button(500, 800, 220, 60, 'Clear', () => { deckCounts[buildFor] = {}; });
     if (mode === 'online') {
       const ok = n === C.DECK_SIZE;
-      button(740, 800, 190, 60, 'Private game', () => startSearch('private'), { enabled: ok, size: 20 });
+      button(740, 800, 190, 60, 'Private game', () => askPrivate(), { enabled: ok, size: 20 });
       button(942, 800, 170, 60, 'Join code', () => askCode(), { enabled: ok, size: 20 });
       button(1130, 800, 450, 60, 'Find Match', () => startSearch('queue'), { enabled: ok, size: 26, col: '#81b64c', hot: '#95c95d' });
       return;
@@ -711,6 +762,9 @@
   function onWin() {
     if (!overSent) {
       overSent = true; post({ type: 'gameOver', score: G().turnNo });
+      lastAward = null;
+      if (mode === 'ai') awardXp(G().winner === 0);
+      else if (mode === 'online' && ol) awardXp(G().winner === ol.side);
       if (mode === 'ai' && botInfo) { const w = G(); reportBotResult(w.winner, w.timeout ? 'timeout' : w.resigned ? 'resign' : 'villager'); }
     }
   }
@@ -825,6 +879,10 @@
       } else {
         button(560, 470, 230, 70, 'Rematch', () => beginMatch(), { size: 28 });
         button(810, 470, 230, 70, 'Menu', toMenu, { size: 28 });
+      }
+      if (lastAward) {
+        txt('+' + lastAward.gain + ' XP  \u00B7  Level ' + lastAward.level, W / 2, 610, 26, ACC, 'center');
+        if (lastAward.unlocked.length) txt('Unlocked: ' + lastAward.unlocked.join(', '), W / 2, 650, 26, GREEN, 'center');
       }
       return;
     }
@@ -1008,6 +1066,15 @@
     render();
   }
 
+  function askPrivate() {
+    dlgOpen('<h2>Private game</h2><p>Play this lobby with the Extra cards or with the classic cards only?</p>' +
+      '<div class="row"><button class="go" id="p-x">With Extra cards</button><button id="p-c">Classic only</button></div>' +
+      '<div class="row"><button id="p-n">Cancel</button></div>', c => {
+      c.querySelector('#p-x').onclick = () => { dlgClose(); startSearch('private', null, true); };
+      c.querySelector('#p-c').onclick = () => { dlgClose(); startSearch('private', null, false); };
+      c.querySelector('#p-n').onclick = dlgClose;
+    });
+  }
   function askCode() {
     dlgOpen('<h2>Join with a code</h2><input id="c-code" maxlength="8" placeholder="Invite code" style="text-transform:uppercase"><div class="err" id="c-err"></div>' +
       '<div class="row"><button class="go">Join</button><button class="alt" id="c-x">Cancel</button></div>', c => {
@@ -1054,11 +1121,13 @@
   }
 
   /* ---- matchmaking ---- */
-  async function startSearch(kind, code) {
+  async function startSearch(kind, code, extras) {
     saveDeck();
-    queue = { id: null, code: null, kind, stop: null, t0: Date.now(), found: false, botCalled: false };
+    queue = { id: null, code: null, kind, stop: null, t0: Date.now(), found: false, botCalled: false, extras: extras !== false };
     screen = 'queue';
-    const deck = deckCounts[0];
+    let deck = deckCounts[0];
+    // classic-only lobby: the host's deck carries a harmless "_classic: 0" marker (adds nothing to the card count)
+    if (kind === 'private' && extras === false) deck = Object.assign(C.classicOnly(deck), { _classic: 0 });
     const r = kind === 'code' ? await Online.joinCode(code, deck)
       : kind === 'private' ? await Online.createPrivate(deck, timeCtl)
         : await Online.findMatch(deck, timeCtl);
@@ -1106,6 +1175,7 @@
     txt(found ? 'Opponent found!' : 'Looking for an opponent' + dots, W / 2, 300, 44, found ? GREEN : '#fff', 'center');
     const tl = timeCtl ? timeCtl / 60 + ' min per player' : 'untimed';
     txt('Time control: ' + tl, W / 2, 346, 20, DIM, 'center');
+    if (queue && queue.kind === 'private') txt('Extra cards: ' + (queue.extras ? 'allowed' : 'off (classic only)'), W / 2, 384, 20, DIM, 'center');
     if (queue && queue.kind === 'queue') txt(Math.floor((Date.now() - queue.t0) / 1000) + ' s  \u00B7  matching players of similar skill', W / 2, 384, 18, DIM, 'center');
     if (queue && queue.code) {
       txt('Invite code', W / 2, 430, 22, DIM, 'center');
@@ -1121,10 +1191,14 @@
     queue = null;
     mode = 'online';
     ol = { row, side: row.p0 === Online.userId ? 0 : 1, used: [0, 0], lastTs: Date.parse(row.started_at), moves: 0, pending: false, reported: false, names: ['', ''] };
-    C.newGame([row.deck0, row.deck1], row.seed);
+    const classic = !!((row.deck0 && '_classic' in row.deck0) || (row.deck1 && '_classic' in row.deck1));
+    const myDeck = ol.side === 0 ? row.deck0 : row.deck1;
+    const swapped = classic && Object.keys(myDeck || {}).some(id => C.DEF[id] && C.DEF[id].extra);
+    ol.classic = classic;
+    C.newGame(classic ? [C.classicOnly(row.deck0), C.classicOnly(row.deck1)] : [row.deck0, row.deck1], row.seed);
     screen = 'place'; placeFor = 0; sel = null; spawnCard = null; selMode = 'normal'; arrows = []; marks = [];
     overSent = false; confirmMenu = false; paused = false; pass = null; clock.on = false;
-    say(ol.side === 0 ? 'Place your Villager (king) in your spawn zone.' : 'Waiting for the opponent to place their Villager...');
+    say(swapped ? 'Classic lobby: your Extra cards were swapped for classic ones. Place your Villager.' : ol.side === 0 ? 'Place your Villager (king) in your spawn zone.' : 'Waiting for the opponent to place their Villager...');
     await Online.syncClock();
     const res = await Online.openMatch(row.id, { onMove: onOnlineMove, onMatch: r => { if (ol) ol.row = r; } });
     if (!res.ok) { infoDialog('Could not open the match', res.error); toMenu(); return; }
