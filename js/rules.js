@@ -1,4 +1,4 @@
-/* CHEGG rules engine (no DOM). Board: 8 columns (x) x 10 rows (y).
+/* CHEGG rules engine (no DOM). Board: 8 columns (x) x 12 rows (y).
    Player 0 (Blue) sits at the bottom and attacks upwards, player 1 (Red) at the top attacks downwards.
    Patterns in data.js are [row, col] with row -1 = "forward"; see offs(). */
 const Chegg = (function () {
@@ -6,7 +6,7 @@ const Chegg = (function () {
   const DEF = {};
   MIN.forEach(d => { DEF[d.id] = d; });
 
-  const COLS = 8, ROWS = 10, MAX_MANA = 6, DECK_SIZE = 15, OPENING_HAND = 3;
+  const COLS = 8, ROWS = 12, MAX_MANA = 6, DECK_SIZE = 15, OPENING_HAND = 3;
   const NAMES = ['Blue', 'Red'];
   const LIMITS = { frog: 2, wither: 1, warden: 1, allay: 2 };
   const ATK = {

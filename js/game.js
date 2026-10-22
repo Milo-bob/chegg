@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const C = Chegg;
-  const W = 1600, H = 900, COLS = C.COLS, ROWS = C.ROWS, CELL = 74, BX = 522, BY = 16;
+  const W = 1600, H = 900, COLS = C.COLS, ROWS = C.ROWS, CELL = 72, BX = 444, BY = 18;
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
   const PCOL = ['#3f7ae8', '#e04a42'];
@@ -42,6 +42,7 @@
   let btns = [], prevBtns = [];
   let aiBusy = false, aiToken = 0;
   let overSent = false;
+  let ol = null;                  // online match state (see online section)
   // planning arrows (right-click drag, like chess.com) and square marks
   let arrows = [], marks = [], drag = null;
   // chess clock: timeCtl = seconds per player (0 = untimed)
@@ -58,7 +59,9 @@
 
   const G = () => C.G;
   const total = c => Object.keys(c).reduce((a, k) => a + c[k], 0);
-  const isHumanTurn = () => mode === 'local' || G().cur === 0;
+  const mySide = () => (mode === 'online' && ol ? ol.side : 0);
+  const isHumanTurn = () => mode === 'local' || G().cur === mySide();
+  const viewer = () => (mode === 'local' ? G().cur : mySide());
   function say(s) { msg = s; msgT = Date.now(); }
   function post(o) { try { window.parent.postMessage(o, '*'); } catch (e) { /* ignore */ } }
 
@@ -197,30 +200,31 @@
   }
 
   // vertical mana gauge: one redstone lamp per mana point, lit = available
-  const MB = { x: 402, y: 76, w: 88, h: 590 };
-  function drawManaBar(x, y, w, h, mana, max, cost) {
+  const MB = { x: 340, w: 76 };
+  function drawManaBar(x, w, mana, max, cost) {
     const n = Math.max(6, max);
-    const gap = 6, size = Math.min(w, Math.floor((h - (n - 1) * gap) / n));
-    const lx = x + (w - size) / 2;
-    rr(x - 8, y - 8, w + 16, h + 16, 8); ctx.fillStyle = '#1f1e1b'; ctx.fill();
+    const gap = 6, size = w;
+    const total = n * size + (n - 1) * gap;
+    const y = BY + (ROWS * CELL - total) / 2;
+    rr(x - 8, y - 8, w + 16, total + 16, 8); ctx.fillStyle = '#1f1e1b'; ctx.fill();
     ctx.imageSmoothingEnabled = false;
     for (let i = 0; i < n; i++) {
-      const ly = y + h - (i + 1) * size - i * gap;
+      const ly = y + total - (i + 1) * size - i * gap;
       const lit = i < mana;
       const im = img[lit ? 'redstone_lamp_on' : 'redstone_lamp'];
       if (lit) {
-        const g = ctx.createRadialGradient(lx + size / 2, ly + size / 2, size * 0.3, lx + size / 2, ly + size / 2, size * 0.85);
+        const g = ctx.createRadialGradient(x + size / 2, ly + size / 2, size * 0.3, x + size / 2, ly + size / 2, size * 0.85);
         g.addColorStop(0, 'rgba(255,200,90,0.35)'); g.addColorStop(1, 'rgba(255,200,90,0)');
-        ctx.fillStyle = g; ctx.fillRect(lx - size * 0.4, ly - size * 0.4, size * 1.8, size * 1.8);
+        ctx.fillStyle = g; ctx.fillRect(x - size * 0.4, ly - size * 0.4, size * 1.8, size * 1.8);
       }
-      if (im && im.complete && im.naturalWidth) ctx.drawImage(im, lx, ly, size, size);
-      else rect(lx, ly, size, size, lit ? '#e0a050' : '#4a3a2a');
-      if (i >= max) rect(lx, ly, size, size, 'rgba(8,10,22,0.6)');
-      if (lit && cost > 0 && i >= mana - cost) rect(lx, ly, size, size, 'rgba(255,120,20,0.45)', '#ffb347', 3);
-      else rect(lx, ly, size, size, null, '#000', 2);
+      if (im && im.complete && im.naturalWidth) ctx.drawImage(im, x, ly, size, size);
+      else rect(x, ly, size, size, lit ? '#e0a050' : '#4a3a2a');
+      if (i >= max) rect(x, ly, size, size, 'rgba(8,10,22,0.6)');
+      if (lit && cost > 0 && i >= mana - cost) rect(x, ly, size, size, 'rgba(255,120,20,0.45)', '#ffb347', 3);
+      else rect(x, ly, size, size, null, '#000', 2);
     }
     txt('MANA', x + w / 2, y - 22, 16, DIM, 'center');
-    txt(mana + '/' + max, x + w / 2, y + h + 38, 26, '#ffd27a', 'center');
+    txt(mana + '/' + max, x + w / 2, y + total + 40, 26, '#ffd27a', 'center');
   }
 
   /* ---------- screens ---------- */
@@ -262,7 +266,7 @@
 
   const HELP = [
     ['Goal', 'Hunt down the enemy Villager (your king). Lose yours and you lose the match.'],
-    ['Board', '8×10 checkerboard. The two back rows on each side are the spawn zones (blue at the bottom, red at the top). New minions can only be placed there. Each player starts by placing their Villager in their own zone.'],
+    ['Board', '8×12 checkerboard. The two back rows on each side are the spawn zones (blue at the bottom, red at the top). New minions can only be placed there. Each player starts by placing their Villager in their own zone.'],
     ['Deck', 'A deck is 15 minions (max 2 Frogs, max 1 Wither). You start with 3 cards in hand and draw 1 at the start of each turn.'],
     ['Mana', 'Turn 1 gives 1 mana, turn 2 gives 2 ... capped at 6. Mana refreshes each turn, unspent mana is lost. Each Cat on the board adds +1.'],
     ['Spending', 'Spawn a minion for its cost. Attacking costs 1 mana (Wither: 2), once per minion per turn. Every minion has 1 free move per turn; moving again ("dash") costs 1 mana. A minion cannot dash and attack in the same turn, and cannot move after attacking. The Villager always pays 1 mana to move.'],
@@ -431,7 +435,7 @@
       const hit = (q.click && sameCell(q.click, cell)) || (q.clicks && q.clicks.some(c => sameCell(c, cell)));
       if (!hit) continue;
       let sc = q.kind === 'attack' ? 10 : q.kind === 'special' ? 5 : 0;
-      if (q.victims) sc += q.victims.reduce((a, v) => a + (v.owner === q.m.owner ? -1.2 : 1), 0);
+      if (q.victims) sc += q.victims.reduce((a, v) => a + (v.owner === (q.m ? q.m.owner : G().cur) ? -1.2 : 1), 0);
       if (sc > bs) { bs = sc; best = q; }
     }
     return best;
@@ -573,32 +577,34 @@
     drawHand();
   }
 
-  const LP = { x: 20, y: 10, w: 360, h: 750 };
-  const RP = { x: 1226, y: 10, w: 354, h: 750 };
+  const LP = { x: 12, y: 10, w: 308, h: 880 };
+  const HP = { x: 1034, y: 10, w: 190, h: 880 };
+  const RP = { x: 1232, y: 10, w: 356, h: 880 };
 
   function drawSidePanels(placing) {
     const g = G();
     panel(LP.x, LP.y, LP.w, LP.h);
     panel(RP.x, RP.y, RP.w, RP.h);
+    panel(HP.x, HP.y, HP.w, HP.h);
     if (placing) {
       txt(C.NAMES[placeFor] + ' places the king', LP.x + LP.w / 2, 70, 30, PCOL[placeFor], 'center');
       drawRight(false);
       return;
     }
-    const P = g.players[g.cur];
+    const P = g.players[viewer()];
     const lx = LP.x + 24;
-    txt(C.NAMES[g.cur] + "'s turn", lx, 58, 34, g.cur === 0 ? '#3f7ae8' : '#e04a42', 'left');
-    txt('Turn ' + P.turn, LP.x + LP.w - 24, 58, 22, DIM, 'right');
+    txt(C.NAMES[g.cur] + "'s turn", lx, 58, 30, g.cur === 0 ? '#3f7ae8' : '#e04a42', 'left');
+    txt('Turn ' + g.players[g.cur].turn, LP.x + LP.w - 20, 58, 20, DIM, 'right');
     let cost = hoverCost;
     if (!cost && spawnCard !== null) cost = (C.DEF[P.hand[spawnCard]] || { cost: 0 }).cost;
-    drawManaBar(MB.x, MB.y, MB.w, MB.h, P.mana, P.maxMana, Math.min(cost, P.mana));
+    drawManaBar(MB.x, MB.w, P.mana, P.maxMana, Math.min(cost, P.mana));
     // info
     const human = isHumanTurn();
     let d = hoverDef;
     if (!d && sel && sel.alive) d = sel.def;
     if (!d && spawnCard !== null) d = C.DEF[P.hand[spawnCard]];
-    if (d) drawInfo(d, lx, 84, LP.w - 48);
-    else txt('Hover a card or minion for details', LP.x + LP.w / 2, 380, 20, DIM, 'center');
+    if (d) drawInfo(d, lx, 84, LP.w - 40);
+    else txt('Hover a card or minion', LP.x + LP.w / 2, 380, 18, DIM, 'center');
     drawRight(human);
   }
 
@@ -649,47 +655,44 @@
     if (!overSent) { overSent = true; post({ type: 'gameOver', score: G().turnNo }); }
   }
 
-  const HAND = { x: 60, y: 774, w: 1480, h: 120 };
+  // hand: a vertical column to the right of the board, mirroring the mana gauge
   function cardRects() {
-    const P = G().players[G().cur];
-    const n = P.hand.length, cw = 104, ch = 100;
-    const gap = Math.min(10, n > 1 ? (HAND.w - 40 - n * cw) / (n - 1) : 10);
-    const startX = HAND.x + Math.max(20, (HAND.w - (n * cw + (n - 1) * gap)) / 2);
-    return P.hand.map((id, i) => ({ id, i, x: startX + i * (cw + gap), y: HAND.y + 10, w: cw, h: ch }));
+    const P = G().players[viewer()];
+    const n = P.hand.length, gap = 6;
+    const ch = Math.min(74, Math.floor((ROWS * CELL - Math.max(0, n - 1) * gap) / Math.max(n, 1)));
+    return P.hand.map((id, i) => ({ id, i, x: HP.x + 10, y: BY + i * (ch + gap), w: HP.w - 20, h: ch }));
   }
   function drawHand() {
-    const g = G(), P = g.players[g.cur];
-    const human = isHumanTurn() && !pass;
-    panel(HAND.x, HAND.y, HAND.w, HAND.h);
-    if (!human) {
-      txt(mode === 'ai' ? 'Computer is playing...' : 'Hand hidden', W / 2, 845, 28, TX, 'center');
-      return;
-    }
+    const g = G(), P = g.players[viewer()];
+    const live = isHumanTurn() && !pass && g.winner === null;
     let hov = null;
     for (const c of cardRects()) {
       const d = C.DEF[c.id];
-      const aff = d.cost <= P.mana;
-      const sl = spawnCard === c.i;
-      const y = c.y - (sl ? 10 : 0);
-      const over = inRect(mouse.x, mouse.y, c.x, y, c.w, c.h);
+      const aff = live && d.cost <= P.mana;
+      const sl = live && spawnCard === c.i;
+      const over = live && inRect(mouse.x, mouse.y, c.x, c.y, c.w, c.h);
       if (over) { hov = d; if (aff) hoverCostNext = d.cost; }
-      slot(c.x, y, c.w, c.h, over ? '#4a4744' : aff ? '#3d3a37' : '#2d2b28');
-      if (sl) { rr(c.x - 2, y - 2, c.w + 4, c.h + 4, 8); ctx.lineWidth = 3; ctx.strokeStyle = GREEN; ctx.stroke(); }
-      ctx.globalAlpha = aff ? 1 : 0.55;
-      sprite(d.id, c.x + c.w / 2, y + 44, 58);
+      slot(c.x, c.y, c.w, c.h, over ? '#4a4744' : aff ? '#3d3a37' : '#2d2b28');
+      if (sl) { rr(c.x - 2, c.y - 2, c.w + 4, c.h + 4, 8); ctx.lineWidth = 3; ctx.strokeStyle = GREEN; ctx.stroke(); }
+      const cy = c.y + c.h / 2;
+      ctx.globalAlpha = aff ? 1 : 0.5;
+      sprite(d.id, c.x + 62, cy, Math.min(54, c.h - 10));
       ctx.globalAlpha = 1;
-      txt(d.name, c.x + c.w / 2, y + 92, 16, aff ? TX : '#7d7b78', 'center');
-      ctx.beginPath(); ctx.arc(c.x + 18, y + 18, 13, 0, Math.PI * 2);
+      ctx.beginPath(); ctx.arc(c.x + 20, cy, 13, 0, Math.PI * 2);
       ctx.fillStyle = aff ? '#e8a43a' : '#4a4744'; ctx.fill();
-      txt(String(d.cost), c.x + 18, y + 24, 17, aff ? '#2b1a00' : '#8a8885', 'center');
-      btns.push({ x: c.x, y, w: c.w, h: c.h, enabled: true, fn: () => selectCard(c.i) });
+      txt(String(d.cost), c.x + 20, cy + 6, 17, aff ? '#2b1a00' : '#8a8885', 'center');
+      setFont(15);
+      const avail = c.w - 96;
+      const fs = ctx.measureText(d.name).width > avail ? Math.max(11, Math.floor(15 * avail / ctx.measureText(d.name).width)) : 15;
+      txt(d.name, c.x + 94, cy + 5, fs, aff ? TX : '#7d7b78', 'left');
+      if (live) btns.push({ x: c.x, y: c.y, w: c.w, h: c.h, enabled: true, fn: () => selectCard(c.i) });
     }
     if (hov) hoverNext = hov;
-    if (!P.hand.length) txt('Your hand is empty', W / 2, 845, 26, TX, 'center');
+    if (!P.hand.length) txt('Hand empty', HP.x + HP.w / 2, 60, 18, DIM, 'center');
   }
 
   function selectCard(i) {
-    const g = G(), P = g.players[g.cur];
+    const g = G(), P = g.players[viewer()];
     if (spawnCard === i) { spawnCard = null; return; }
     sel = null; selMode = 'normal';
     const d = C.DEF[P.hand[i]];
