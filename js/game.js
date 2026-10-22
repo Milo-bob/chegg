@@ -1172,7 +1172,7 @@
     if (queue && queue.kind === 'queue' && queue.id && !queue.found && !queue.botCalled && Date.now() - queue.t0 > 20000) startBotFallback();
     const dots = '.'.repeat(1 + Math.floor(Date.now() / 400) % 3);
     const found = !!(queue && queue.found);
-    txt(found ? 'Opponent found!' : 'Looking for an opponent' + dots, W / 2, 300, 44, found ? GREEN : '#fff', 'center');
+    txt(found ? 'Opponent found!' : 'Matching players' + dots, W / 2, 300, 44, found ? GREEN : '#fff', 'center');
     const tl = timeCtl ? timeCtl / 60 + ' min per player' : 'untimed';
     txt('Time control: ' + tl, W / 2, 346, 20, DIM, 'center');
     if (queue && queue.kind === 'private') txt('Extra cards: ' + (queue.extras ? 'allowed' : 'off (classic only)'), W / 2, 384, 20, DIM, 'center');
