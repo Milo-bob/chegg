@@ -8,13 +8,14 @@ const Chegg = (function () {
 
   const COLS = 8, ROWS = 10, MAX_MANA = 6, DECK_SIZE = 15, OPENING_HAND = 3;
   const NAMES = ['Blue', 'Red'];
-  const LIMITS = { frog: 2, wither: 1 };
+  const LIMITS = { frog: 2, wither: 1, warden: 1, allay: 2 };
   const ATK = {
     villager: 'target', zombie: 'target', creeper: 'area', pufferfish: 'area', irongolem: 'dir',
     enderman: 'target', skeleton: 'target', blaze: 'target', phantom: 'target', slime: 'target',
-    shulkerbox: 'target', wither: 'dir'
+    shulkerbox: 'target', wither: 'dir',
+    wolf: 'target', bee: 'target', spider: 'target', snowgolem: 'target', horse: 'target', warden: 'target'
   };
-  const LANDS = { villager: 1, slime: 1, shulkerbox: 1 }; // attacker moves onto the target square
+  const LANDS = { villager: 1, slime: 1, shulkerbox: 1, horse: 1 }; // attacker moves onto the target square
   const DIRS = [[1, 0, '→'], [-1, 0, '←'], [0, -1, '↑'], [0, 1, '↓']];
 
   let G = null;
@@ -53,10 +54,10 @@ const Chegg = (function () {
     return a;
   }
 
-  function randomDeck() {
+  function randomDeck(includeExtras) {
     const counts = {};
     let total = 0;
-    const ids = MIN.filter(d => d.id !== 'villager').map(d => d.id);
+    const ids = MIN.filter(d => d.id !== 'villager' && (includeExtras || !d.extra)).map(d => d.id);
     let guard = 0;
     while (total < DECK_SIZE && guard++ < 1000) {
       const id = ids[Math.floor(Math.random() * ids.length)];
@@ -232,6 +233,7 @@ const Chegg = (function () {
           run() {
             kill(t, m);
             if (LANDS[sd.id] && !at(sq.x, sq.y)) relocate(m, sq.x, sq.y);
+            if (sd.id === 'bee') kill(m, m);
           }
         });
       }
@@ -366,6 +368,7 @@ const Chegg = (function () {
     const m = spawnMinion(pi, opt.id, opt.click.x, opt.click.y);
     log(NAMES[pi] + ' spawned ' + m.def.name + '.');
     if (opt.id === 'pig') draw(pi, 1);
+    if (opt.id === 'allay') { P.mana += 2; log('Allay: +2 mana.'); }
     if (opt.id === 'sniffer') {
       const opp = G.players[other(pi)];
       for (let i = 0; i < 2 && opp.deck.length; i++) P.hand.push(opp.deck.pop());
@@ -414,10 +417,12 @@ const Chegg = (function () {
   function score(opt, pi, threats) {
     const ev = enemyVillager(pi);
     if (opt.kind === 'spawn') {
+      const P0 = G.players[pi];
       let s = 2 + opt.cost * 1.6;
       const id = opt.id;
       if (id === 'cat') s = catCount(pi) ? -5 : 7;
       if (id === 'pig') s = 4;
+      if (id === 'allay') s = P0.mana >= 5 ? 5 : 3;
       if (id === 'sniffer') s = 3;
       if (id === 'parrot' || id === 'frog' || id === 'enderman') s -= 2;
       if (id === 'creeper') s -= 1;

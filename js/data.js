@@ -145,6 +145,63 @@ const MINIONS = [
     attack:"Costs 2 mana instead of the usual 1 — fires a lateral projectile 3 squares out, splashing the tiles beside its path.",
     ability:"On spawn, immediately destroys everything in the 8 surrounding squares — friend or foe. The single most expensive, most explosive minion in the deck.",
     movePattern:[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]], attackPattern:[[-1,0],[-2,0],[-3,0],[1,0],[2,0],[3,0],[0,-1],[0,-2],[0,-3],[0,1],[0,2],[0,3]], copyLimit:"Deck limit: max 1 per deck"
+  },
+  /* ---- extras: fan-made minions, not part of the original ruleset ---- */
+  {
+    id:"wolf", name:"Wolf", cost:1, tier:"offense", extra:true,
+    img:"assets/minions/wolf.png",
+    move:"Forward 1 or 2 squares, or 1 square sideways.",
+    attack:"The 2 forward diagonal squares, like a chess pawn.",
+    ability:"A cheap pack hunter that bites diagonally.",
+    movePattern:[[-1,0],[-2,0],[0,-1],[0,1]], attackPattern:[[-1,-1],[-1,1]]
+  },
+  {
+    id:"bee", name:"Bee", cost:1, tier:"offense", extra:true,
+    img:"assets/minions/bee.png",
+    move:"Any of the 8 surrounding squares.",
+    attack:"Stings any of the 4 lateral squares around it.",
+    ability:"The Bee dies after it stings. A cheap trade for bigger pieces.",
+    movePattern:[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]], attackPattern:[[-1,0],[1,0],[0,-1],[0,1]]
+  },
+  {
+    id:"spider", name:"Spider", cost:2, tier:"offense", extra:true,
+    img:"assets/minions/spider.png",
+    move:"Climbs diagonally, 1 or 2 squares, leaping over anything in between.",
+    attack:"The 4 lateral squares immediately around it.",
+    ability:"Slips past blockers on the diagonals and bites sideways.",
+    movePattern:[[-1,-1],[-1,1],[1,-1],[1,1],[-2,-2],[-2,2],[2,-2],[2,2]], attackPattern:[[-1,0],[1,0],[0,-1],[0,1]]
+  },
+  {
+    id:"snowgolem", name:"Snow Golem", cost:2, tier:"offense", extra:true,
+    img:"assets/minions/snowgolem.png",
+    move:"1 square, laterally only.",
+    attack:"Throws snowballs straight ahead, up to 3 squares away.",
+    ability:"A slow turret that keeps the front line honest.",
+    movePattern:[[-1,0],[1,0],[0,-1],[0,1]], attackPattern:[[-1,0],[-2,0],[-3,0]]
+  },
+  {
+    id:"horse", name:"Horse", cost:3, tier:"offense", extra:true,
+    img:"assets/minions/horse.png",
+    move:"Jumps like a chess knight (an L-shape), over anything in the way.",
+    attack:"Same L-shaped squares: it lands on its target and destroys it.",
+    ability:"The knight of the stable. Costs 1 mana to attack, like everyone else.",
+    movePattern:[[-2,-1],[-2,1],[2,-1],[2,1],[-1,-2],[-1,2],[1,-2],[1,2]], attackPattern:[[-2,-1],[-2,1],[2,-1],[2,1],[-1,-2],[-1,2],[1,-2],[1,2]]
+  },
+  {
+    id:"allay", name:"Allay", cost:3, tier:"support", extra:true,
+    img:"assets/minions/allay.png",
+    move:"Any of the 8 surrounding squares.",
+    attack:"None - the Allay can't attack.",
+    ability:"On spawn, you gain 2 extra mana this turn.",
+    movePattern:[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]], attackPattern:[], copyLimit:"Deck limit: max 2 per deck"
+  },
+  {
+    id:"warden", name:"Warden", cost:5, tier:"offense", extra:true,
+    img:"assets/minions/warden.png",
+    move:"Any of the 8 surrounding squares.",
+    attack:"Sonic strike on any target up to 3 squares away in a straight line, or on any diagonal neighbour.",
+    ability:"A heavy hitter with huge reach.",
+    movePattern:[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]], attackPattern:[[-1,0],[-2,0],[-3,0],[1,0],[2,0],[3,0],[0,-1],[0,-2],[0,-3],[0,1],[0,2],[0,3],[-1,-1],[-1,1],[1,-1],[1,1]], copyLimit:"Deck limit: max 1 per deck"
   }
 ];
 

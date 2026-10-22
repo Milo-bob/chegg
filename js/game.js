@@ -30,6 +30,7 @@
   let mode = 'ai';                // ai | local
   let deckCounts = [{}, {}];
   let buildFor = 0;
+  let deckTab = 'classic';        // classic | extra
   let placeFor = 0;
   let pass = null;                // {text, cb} hotseat hand-over overlay
   let confirmMenu = false, paused = false;
@@ -264,7 +265,7 @@
 
   /* ---- deck builder ---- */
   function startDeckBuild(m) {
-    mode = m; buildFor = 0; screen = 'deck';
+    mode = m; buildFor = 0; screen = 'deck'; deckTab = 'classic';
     if (!total(deckCounts[0])) deckCounts[0] = C.randomDeck();
     deckCounts[1] = {};
   }
@@ -275,7 +276,10 @@
     const who = mode === 'local' ? 'Player ' + (buildFor + 1) + ' (' + C.NAMES[buildFor] + ')' : 'Your';
     txt(who + ' deck', 40, 66, 42, buildFor === 0 ? '#8fb2ff' : '#ff8d86', 'left');
     txt('Pick ' + C.DECK_SIZE + ' minions — ' + n + '/' + C.DECK_SIZE + '   (your Villager king is added for free)', 40, 98, 22, n === C.DECK_SIZE ? '#6dff8f' : '#ddd');
-    const list = C.MIN.filter(d => d.id !== 'villager');
+    const list = C.MIN.filter(d => d.id !== 'villager' && !!d.extra === (deckTab === 'extra'));
+    const nExtra = C.MIN.filter(d => d.extra).length;
+    button(560, 30, 170, 46, 'Classic', () => { deckTab = 'classic'; }, { size: 20, col: deckTab === 'classic' ? '#81b64c' : '#454441', hot: deckTab === 'classic' ? '#95c95d' : '#55534f' });
+    button(744, 30, 190, 46, 'Extras (' + nExtra + ')', () => { deckTab = 'extra'; }, { size: 20, col: deckTab === 'extra' ? '#81b64c' : '#454441', hot: deckTab === 'extra' ? '#95c95d' : '#55534f' });
     let hov = null;
     list.forEach((d, i) => {
       const col = i % 6, row = Math.floor(i / 6);
@@ -300,12 +304,12 @@
     if (hov) drawInfo(hov, 1058, 135, 500);
     else txt('Hover a minion for details', 1305, 440, 22, DIM, 'center');
     button(40, 800, 200, 60, 'Back', () => { screen = 'menu'; });
-    button(260, 800, 220, 60, 'Random', () => { deckCounts[buildFor] = C.randomDeck(); });
+    button(260, 800, 220, 60, 'Random', () => { deckCounts[buildFor] = C.randomDeck(deckTab === 'extra'); });
     button(500, 800, 220, 60, 'Clear', () => { deckCounts[buildFor] = {}; });
     const last = mode === 'ai' || buildFor === 1;
     button(1130, 800, 450, 60, last ? 'Start Match' : 'Next: Player 2 deck', () => {
       if (buildFor === 0) saveDeck();
-      if (mode === 'ai') { deckCounts[1] = C.randomDeck(); beginMatch(); }
+      if (mode === 'ai') { deckCounts[1] = C.randomDeck(C.MIN.some(d => d.extra && deckCounts[0][d.id])); beginMatch(); }
       else if (buildFor === 0) { buildFor = 1; }
       else beginMatch();
     }, { enabled: n === C.DECK_SIZE, size: 26, col: '#81b64c', hot: '#95c95d' });
