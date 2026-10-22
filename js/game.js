@@ -43,6 +43,7 @@
   let aiBusy = false, aiToken = 0;
   let overSent = false;
   let ol = null;                  // online match state (see online section)
+  let queue = null, resumeRow = null;
   // planning arrows (right-click drag, like chess.com) and square marks
   let arrows = [], marks = [], drag = null;
   // chess clock: timeCtl = seconds per player (0 = untimed)
@@ -60,7 +61,7 @@
   const G = () => C.G;
   const total = c => Object.keys(c).reduce((a, k) => a + c[k], 0);
   const mySide = () => (mode === 'online' && ol ? ol.side : 0);
-  const isHumanTurn = () => mode === 'local' || G().cur === mySide();
+  const isHumanTurn = () => mode === 'local' || (G().cur === mySide() && !(ol && ol.pending));
   const viewer = () => (mode === 'local' ? G().cur : mySide());
   function say(s) { msg = s; msgT = Date.now(); }
   function post(o) { try { window.parent.postMessage(o, '*'); } catch (e) { /* ignore */ } }
@@ -135,7 +136,7 @@
   }
 
   function drawTile(x, y) {
-    const px = BX + x * CELL, py = BY + y * CELL;
+    const px = vx(x), py = vy(y);
     let t, dim = 0;
     if (y >= ROWS - 2) { t = (x + y) % 2 ? 'blueconcrete' : 'lightblueconcrete'; dim = 0.32; }
     else if (y < 2) { t = (x + y) % 2 ? 'redconcrete' : 'orangeconcrete'; dim = 0.32; }
@@ -252,15 +253,17 @@
     ctx.fillStyle = '#fff'; ctx.font = '800 130px ' + FONT; ctx.fillText('Chegg', W / 2, 205);
     ctx.fillStyle = GREEN; ctx.fillRect(W / 2 - 60, 226, 120, 6);
     txt('Chess × Egg — the deck-building duel', W / 2, 400, 28, ACC, 'center');
-    button(540, 440, 520, 72, 'Play vs Computer', () => startDeckBuild('ai'), { size: 28, col: '#81b64c', hot: '#95c95d' });
-    button(540, 526, 520, 72, 'Local 2 Players', () => startDeckBuild('local'), { size: 28 });
-    button(540, 612, 520, 72, 'How to Play', () => { screen = 'help'; }, { size: 28 });
-    txt('Time control', W / 2, 716, 16, DIM, 'center');
+    button(540, 424, 520, 66, 'Play vs Computer', () => startDeckBuild('ai'), { size: 26, col: '#81b64c', hot: '#95c95d' });
+    button(540, 500, 520, 66, 'Play Online', openOnline, { size: 26 });
+    button(540, 576, 520, 66, 'Local 2 Players', () => startDeckBuild('local'), { size: 26 });
+    button(540, 652, 520, 66, 'How to Play', () => { screen = 'help'; }, { size: 26 });
+    txt('Time control', W / 2, 752, 16, DIM, 'center');
     [[0, 'Untimed'], [180, '3 min'], [300, '5 min'], [600, '10 min']].forEach((t, i) => {
       const on = timeCtl === t[0];
-      button(540 + i * 133, 728, 121, 44, t[1], () => { timeCtl = t[0]; },
+      button(540 + i * 133, 764, 121, 44, t[1], () => { timeCtl = t[0]; },
         { size: 18, col: on ? '#81b64c' : '#454441', hot: on ? '#95c95d' : '#55534f' });
     });
+    drawAccountChip();
     txt('Based on the Minecraft minigame CHEGG by Gerg', W / 2, 850, 16, DIM, 'center');
   }
 
@@ -342,6 +345,13 @@
     button(40, 800, 200, 60, 'Back', () => { screen = 'menu'; });
     button(260, 800, 220, 60, 'Random', () => { deckCounts[buildFor] = C.randomDeck(deckTab === 'extra'); });
     button(500, 800, 220, 60, 'Clear', () => { deckCounts[buildFor] = {}; });
+    if (mode === 'online') {
+      const ok = n === C.DECK_SIZE;
+      button(740, 800, 190, 60, 'Private game', () => startSearch('private'), { enabled: ok, size: 20 });
+      button(942, 800, 170, 60, 'Join code', () => askCode(), { enabled: ok, size: 20 });
+      button(1130, 800, 450, 60, 'Find Match', () => startSearch('queue'), { enabled: ok, size: 26, col: '#81b64c', hot: '#95c95d' });
+      return;
+    }
     const last = mode === 'ai' || buildFor === 1;
     button(1130, 800, 450, 60, last ? 'Start Match' : 'Next: Player 2 deck', () => {
       if (buildFor === 0) saveDeck();
@@ -384,8 +394,21 @@
     say('Your turn. Click a card to spawn, or a minion to move or attack.');
     post({ type: 'ready' });
   }
+  function submit(a) {
+    if (!ol || ol.pending) return;
+    ol.pending = true;
+    Online.send(ol.side, a).then(r => {
+      if (ol) ol.pending = false;
+      if (!r.ok) say('Could not send the move: ' + r.error);
+    });
+  }
+  function doOpt(o) {
+    if (mode === 'online') { submit({ t: 'opt', p: mySide(), k: C.optKey(o) }); return; }
+    C.perform(o); afterAction();
+  }
   function endTurn() {
     if (G().winner !== null) return;
+    if (mode === 'online') { if (isHumanTurn()) submit({ t: 'end', p: mySide() }); return; }
     sel = null; spawnCard = null; selMode = 'normal'; arrows = []; marks = [];
     C.endTurn();
     if (mode === 'local') {
@@ -412,6 +435,10 @@
   }
   function toMenu() {
     aiToken++; aiBusy = false; screen = 'menu'; confirmMenu = false; paused = false; pass = null; sel = null; spawnCard = null;
+    if (queue) { if (queue.stop) queue.stop(); queue = null; }
+    if (ol) { Online.closeMatch(); ol = null; }
+    mode = 'ai'; clock.on = false;
+    refreshResume();
   }
 
   /* ---- play screen ---- */
@@ -451,15 +478,19 @@
       const conflict = sp.some(q => normal.some(n => n.click && sameCell(n.click, q.click)));
       if (selMode === 'special' || conflict) list.push({ toggle: true, color: selMode === 'special' ? '#8366cc' : '#6b52b0', glyph: '\u2194' });
     }
-    list.forEach((b, i) => { b.x = BX + sel.x * CELL + CELL - 28; b.y = BY + sel.y * CELL + 2 + i * 28; b.s = 26; });
+    list.forEach((b, i) => { b.x = vx(sel.x) + CELL - 28; b.y = vy(sel.y) + 2 + i * 28; b.s = 26; });
     return list;
   }
+  const flip = () => mode === 'online' && !!ol && ol.side === 1;
+  const vx = x => BX + (flip() ? COLS - 1 - x : x) * CELL;
+  const vy = y => BY + (flip() ? ROWS - 1 - y : y) * CELL;
   function cellAt(px, py) {
     const x = Math.floor((px - BX) / CELL), y = Math.floor((py - BY) / CELL);
-    return C.inb(x, y) && px >= BX && py >= BY ? { x, y } : null;
+    if (!C.inb(x, y) || px < BX || py < BY) return null;
+    return flip() ? { x: COLS - 1 - x, y: ROWS - 1 - y } : { x, y };
   }
 
-  const ctr = q => ({ x: BX + q.x * CELL + CELL / 2, y: BY + q.y * CELL + CELL / 2 });
+  const ctr = q => ({ x: vx(q.x) + CELL / 2, y: vy(q.y) + CELL / 2 });
   function drawArrow(a, b, c) {
     const A = ctr(a), B = ctr(b);
     const dx = b.x - a.x, dy = b.y - a.y;
@@ -508,22 +539,22 @@
     // board frame
     rr(BX - 6, BY - 6, COLS * CELL + 12, ROWS * CELL + 12, 6); ctx.fillStyle = '#1f1e1b'; ctx.fill();
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) drawTile(x, y);
-    if (placing) {
+    if (placing && (mode !== 'online' || placeFor === mySide())) {
       for (const y of C.zoneOf(placeFor)) for (let x = 0; x < COLS; x++) {
-        if (!C.at(x, y)) { ctx.beginPath(); ctx.arc(BX + x * CELL + CELL / 2, BY + y * CELL + CELL / 2, CELL * 0.17, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fill(); }
+        if (!C.at(x, y)) { ctx.beginPath(); ctx.arc(vx(x) + CELL / 2, vy(y) + CELL / 2, CELL * 0.17, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fill(); }
       }
     }
-    if (sel && sel.alive) rect(BX + sel.x * CELL, BY + sel.y * CELL, CELL, CELL, 'rgba(247,236,89,0.55)');
-    if (preview) for (const q of preview) rect(BX + q.x * CELL, BY + q.y * CELL, CELL, CELL, 'rgba(235,97,80,0.5)');
+    if (sel && sel.alive) rect(vx(sel.x), vy(sel.y), CELL, CELL, 'rgba(247,236,89,0.55)');
+    if (preview) for (const q of preview) rect(vx(q.x), vy(q.y), CELL, CELL, 'rgba(235,97,80,0.5)');
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       const m = g.board[y][x];
-      if (m) drawMinion(m, BX + x * CELL, BY + y * CELL);
+      if (m) drawMinion(m, vx(x), vy(y));
     }
     // chess.com style hints: dots for free squares, rings for captures
     for (const o of opts) {
       const sq = o.clicks || (o.click ? [o.click] : []);
       for (const c of sq) {
-        const cx = BX + c.x * CELL + CELL / 2, cy = BY + c.y * CELL + CELL / 2;
+        const cx = vx(c.x) + CELL / 2, cy = vy(c.y) + CELL / 2;
         const hit = !!C.at(c.x, c.y) && o.kind !== 'spawn';
         ctx.beginPath();
         if (hit) {
@@ -535,7 +566,7 @@
         }
         if (hc && sameCell(hc, c) && !inBadge) {
           ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-          ctx.strokeRect(BX + hc.x * CELL + 2, BY + hc.y * CELL + 2, CELL - 4, CELL - 4);
+          ctx.strokeRect(vx(hc.x) + 2, vy(hc.y) + 2, CELL - 4, CELL - 4);
         }
       }
     }
@@ -554,17 +585,17 @@
       } else txt(b.glyph, b.x + 13, b.y + 20, 18, '#fff', 'center');
     }
     for (const o of opts) {
-      if (o.click && o.cost > 0 && o.kind !== 'spawn') txt(String(o.cost), BX + o.click.x * CELL + CELL - 6, BY + o.click.y * CELL + CELL - 6, 18, '#fff', 'right');
+      if (o.click && o.cost > 0 && o.kind !== 'spawn') txt(String(o.cost), vx(o.click.x) + CELL - 6, vy(o.click.y) + CELL - 6, 18, '#fff', 'right');
     }
     // planning marks and arrows
-    for (const m of marks) rect(BX + m.x * CELL, BY + m.y * CELL, CELL, CELL, 'rgba(' + m.c + ',0.5)');
+    for (const m of marks) rect(vx(m.x), vy(m.y), CELL, CELL, 'rgba(' + m.c + ',0.5)');
     for (const a of arrows) drawArrow(a.a, a.b, a.c);
     if (drag && hc && (hc.x !== drag.from.x || hc.y !== drag.from.y)) drawArrow(drag.from, hc, drag.c);
     // fx
     const now = Date.now();
     g.fx = g.fx.filter(f => now - f.t < 600);
     for (const f of g.fx) {
-      const k = (now - f.t) / 600, cx = BX + f.x * CELL + CELL / 2, cy = BY + f.y * CELL + CELL / 2;
+      const k = (now - f.t) / 600, cx = vx(f.x) + CELL / 2, cy = vy(f.y) + CELL / 2;
       ctx.beginPath(); ctx.arc(cx, cy, 12 + k * 40, 0, Math.PI * 2);
       ctx.strokeStyle = (f.kind === 'boom' ? 'rgba(255,140,30,' : 'rgba(255,255,255,') + (1 - k) + ')';
       ctx.lineWidth = 8 * (1 - k) + 1; ctx.stroke();
@@ -617,7 +648,7 @@
     slot(rx + 16, y + 14, 56, 56, '#1f1e1b');
     sprite('villager', rx + 44, y + 43, 46);
     rr(rx + 16, y + 14, 56, 56, 6); ctx.lineWidth = 3; ctx.strokeStyle = PCOL[pi]; ctx.stroke();
-    const name = mode === 'ai' ? (pi === 0 ? 'You' : 'Computer') : C.NAMES[pi];
+    const name = mode === 'online' && ol ? (pi === ol.side ? 'You' : '') + (ol.names[pi] ? (pi === ol.side ? ' (' + ol.names[pi] + ')' : ol.names[pi]) : C.NAMES[pi]) : mode === 'ai' ? (pi === 0 ? 'You' : 'Computer') : C.NAMES[pi];
     txt(name, rx + 86, y + 38, 22, TX, 'left');
     txt('Hand ' + P.hand.length + '  \u00B7  Deck ' + P.deck.length, rx + 86, y + 62, 15, DIM, 'left');
     if (clock.on) {
@@ -628,13 +659,14 @@
     } else if (active) { ctx.beginPath(); ctx.arc(rx + w - 20, y + 20, 6, 0, Math.PI * 2); ctx.fillStyle = GREEN; ctx.fill(); }
   }
 
+  const bottomSide = () => (mode === 'online' && ol ? ol.side : 0);
   function drawRight(human) {
     const g = G();
     const rx = RP.x + 16, w = RP.w - 32;
-    playerBar(1, RP.y + 14);
-    playerBar(0, RP.y + RP.h - 14 - 56 - 12 - 84);
+    playerBar(1 - bottomSide(), RP.y + 14);
+    playerBar(bottomSide(), RP.y + RP.h - 14 - 56 - 12 - 84);
     const placing = screen === 'place';
-    const text = placing ? 'Place your Villager (king) on a free square in your spawn zone.' : (msg && Date.now() - msgT < 8000 ? msg : '');
+    const text = placing ? (mode === 'online' && placeFor !== mySide() ? 'Waiting for the opponent to place their Villager...' : 'Place your Villager (king) on a free square in your spawn zone.') : (msg && Date.now() - msgT < 8000 ? msg : '');
     if (text) {
       slot(rx, RP.y + 116, w, 120, '#2d2b28');
       wrap(text, rx + 16, RP.y + 150, w - 32, 18, 24, TX);
@@ -703,6 +735,11 @@
 
   function onBoardClick(cell) {
     const g = G();
+    if (screen === 'place' && mode === 'online') {
+      if (placeFor !== mySide()) say('Waiting for the opponent to place their Villager...');
+      else if (!ol.pending) submit({ t: 'place', p: mySide(), x: cell.x, y: cell.y });
+      return;
+    }
     if (screen === 'place') {
       if (C.placeVillager(placeFor, cell.x, cell.y)) afterPlace();
       else say('Pick a free square in your own spawn zone.');
@@ -712,11 +749,11 @@
     const opts = curOptions();
     const bd = badgesFor(opts).find(b => inRect(mouse.x, mouse.y, b.x, b.y, b.s, b.s));
     if (bd) {
-      if (bd.opt) { C.perform(bd.opt); afterAction(); } else selMode = selMode === 'special' ? 'normal' : 'special';
+      if (bd.opt) doOpt(bd.opt); else selMode = selMode === 'special' ? 'normal' : 'special';
       return;
     }
     const o = optAt(opts, cell);
-    if (o) { C.perform(o); afterAction(); return; }
+    if (o) { doOpt(o); return; }
     const m = C.at(cell.x, cell.y);
     if (m && m.owner === g.cur) {
       spawnCard = null; selMode = 'normal';
@@ -742,17 +779,29 @@
       onWin();
       rect(0, 0, W, H, 'rgba(0,0,0,0.6)');
       const human = mode === 'ai';
-      const t = human ? (g.winner === 0 ? 'You win!' : 'Computer wins') : C.NAMES[g.winner] + ' wins!';
-      txt(t, W / 2, 370, 100, g.winner === 0 ? '#8fb2ff' : '#ff8d86', 'center');
-      txt(g.timeout ? 'The other player ran out of time.' : 'The enemy Villager was eliminated.', W / 2, 420, 26, '#ddd', 'center');
-      button(560, 470, 230, 70, 'Rematch', () => beginMatch(), { size: 28 });
-      button(810, 470, 230, 70, 'Menu', toMenu, { size: 28 });
+      const online = mode === 'online' && ol;
+      const t = online ? (g.winner === ol.side ? 'You win!' : 'You lose') : human ? (g.winner === 0 ? 'You win!' : 'Computer wins') : C.NAMES[g.winner] + ' wins!';
+      txt(t, W / 2, 370, 100, (online ? g.winner === ol.side : g.winner === 0) ? '#8fb2ff' : '#ff8d86', 'center');
+      txt(g.timeout ? 'Someone ran out of time.' : g.resigned ? 'A player resigned.' : 'The enemy Villager was eliminated.', W / 2, 420, 26, '#ddd', 'center');
+      if (online) {
+        const r = ol.row;
+        if (r && r.status === 'finished') {
+          const line = r.winner === null || r.winner === undefined ? 'Result disputed - no rating change.'
+            : 'Rating ' + (r.winner === ol.side ? '+' : '-') + (r.rating_delta || 0) + (Online.profile ? '  (now ' + Online.profile.rating + ')' : '');
+          txt(line, W / 2, 462, 24, ACC, 'center');
+        } else txt('Saving the result...', W / 2, 462, 20, DIM, 'center');
+        button(685, 490, 230, 70, 'Menu', toMenu, { size: 28 });
+      } else {
+        button(560, 470, 230, 70, 'Rematch', () => beginMatch(), { size: 28 });
+        button(810, 470, 230, 70, 'Menu', toMenu, { size: 28 });
+      }
       return;
     }
     if (confirmMenu) {
       rect(0, 0, W, H, 'rgba(0,0,0,0.7)');
-      txt('Leave the match?', W / 2, 380, 54, '#fff', 'center');
-      button(560, 430, 230, 70, 'Leave', toMenu, { size: 28, col: '#b83b32', hot: '#cf4b41' });
+      const onl = mode === 'online' && ol && G().winner === null;
+      txt(onl ? 'Resign the match?' : 'Leave the match?', W / 2, 380, 54, '#fff', 'center');
+      button(560, 430, 230, 70, onl ? 'Resign' : 'Leave', onl ? resignOnline : toMenu, { size: 28, col: '#b83b32', hot: '#cf4b41' });
       button(810, 430, 230, 70, 'Keep playing', () => { confirmMenu = false; }, { size: 24 });
       return;
     }
@@ -767,6 +816,7 @@
   function tickClock() {
     const now = Date.now(), dt = now - clock.last;
     clock.last = now;
+    if (mode === 'online' && ol && (screen === 'play' || screen === 'place')) { tickOnlineClock(); return; }
     if (!clock.on || screen !== 'play') return;
     const g = G();
     if (g.winner !== null || pass || paused || confirmMenu) return;
@@ -792,6 +842,7 @@
     if (screen === 'menu') drawMenu();
     else if (screen === 'help') drawHelp();
     else if (screen === 'deck') drawDeck();
+    else if (screen === 'queue') drawQueue();
     else drawPlay();
     const before = btns.length;
     drawOverlays();
@@ -842,18 +893,232 @@
   });
   canvas.addEventListener('pointerleave', () => { mouse = { x: -1, y: -1 }; drag = null; });
   window.addEventListener('keydown', e => {
+    if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (e.key === 'Backspace') {
       e.preventDefault();
       if (screen === 'play' || screen === 'place') {
         if (G() && G().winner !== null) toMenu(); else confirmMenu = !confirmMenu;
-      } else if (screen === 'deck' || screen === 'help') screen = 'menu';
+      } else if (screen === 'queue') cancelQueue();
+      else if (screen === 'deck' || screen === 'help') screen = 'menu';
     } else if (e.key === 'p' || e.key === 'P') {
-      if (screen === 'play' && !pass) paused = !paused;
+      if (screen === 'play' && !pass && mode !== 'online') paused = !paused;
     } else if ((e.key === 'Enter' || e.key === ' ') && screen === 'play') {
       e.preventDefault();
       if (!pass && !confirmMenu && !paused && isHumanTurn() && !aiBusy && G().winner === null) endTurn();
     }
   });
+
+  /* ================= online (Supabase) ================= */
+  const dlg = document.getElementById('dlg');
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function dlgOpen(html, wire) {
+    dlg.innerHTML = '<div class="card">' + html + '</div>';
+    dlg.classList.add('on');
+    wire(dlg.querySelector('.card'));
+    const f = dlg.querySelector('input'); if (f) f.focus();
+  }
+  function dlgClose() { dlg.classList.remove('on'); dlg.innerHTML = ''; }
+  function infoDialog(title, text) {
+    dlgOpen('<h2>' + esc(title) + '</h2><p>' + esc(text) + '</p><div class="row"><button class="go">OK</button></div>',
+      c => { c.querySelector('.go').onclick = dlgClose; });
+  }
+
+  function showAuth(onDone) {
+    let tab = 'in';
+    const render = () => {
+      dlgOpen(
+        '<h2>Play online</h2>' +
+        '<div class="tabs"><button data-t="in" class="' + (tab === 'in' ? 'on' : '') + '">Sign in</button>' +
+        '<button data-t="up" class="' + (tab === 'up' ? 'on' : '') + '">Create account</button></div>' +
+        (tab === 'up' ? '<input id="a-name" maxlength="16" placeholder="Username (3-16 letters, digits, _)" autocomplete="username">' : '') +
+        '<input id="a-mail" type="email" placeholder="Email" autocomplete="email">' +
+        '<input id="a-pass" type="password" placeholder="Password (6+ characters)" autocomplete="' + (tab === 'up' ? 'new-password' : 'current-password') + '">' +
+        '<div class="err" id="a-err"></div>' +
+        '<div class="row"><button class="go">' + (tab === 'up' ? 'Create account' : 'Sign in') + '</button></div>' +
+        '<div class="row"><button class="alt" id="a-guest">Play as guest</button><button class="alt" id="a-x">Cancel</button></div>',
+        c => {
+          c.querySelectorAll('.tabs button').forEach(b => { b.onclick = () => { tab = b.dataset.t; render(); }; });
+          const err = m => { c.querySelector('#a-err').textContent = m || ''; };
+          const val = id => (c.querySelector(id) || { value: '' }).value.trim();
+          const done = r => { if (!r.ok) { err(r.error); return; } if (r.needsConfirm) { err('Check your inbox and confirm your email, then sign in.'); return; } dlgClose(); onDone(); };
+          c.querySelector('.go').onclick = async () => {
+            err('Working...');
+            if (tab === 'up') {
+              if (!/^[A-Za-z0-9_]{3,16}$/.test(val('#a-name'))) { err('Username: 3-16 letters, digits or _.'); return; }
+              done(await Online.signUp(val('#a-mail'), c.querySelector('#a-pass').value, val('#a-name')));
+            } else done(await Online.signIn(val('#a-mail'), c.querySelector('#a-pass').value));
+          };
+          c.querySelector('#a-guest').onclick = async () => { err('Working...'); done(await Online.guest()); };
+          c.querySelector('#a-x').onclick = dlgClose;
+          c.addEventListener('keydown', e => { if (e.key === 'Enter') c.querySelector('.go').click(); });
+        });
+    };
+    render();
+  }
+
+  function askCode() {
+    dlgOpen('<h2>Join with a code</h2><input id="c-code" maxlength="8" placeholder="Invite code" style="text-transform:uppercase"><div class="err" id="c-err"></div>' +
+      '<div class="row"><button class="go">Join</button><button class="alt" id="c-x">Cancel</button></div>', c => {
+      c.querySelector('#c-x').onclick = dlgClose;
+      c.querySelector('.go').onclick = () => { const v = c.querySelector('#c-code').value.trim(); if (v) { dlgClose(); startSearch('code', v); } };
+      c.addEventListener('keydown', e => { if (e.key === 'Enter') c.querySelector('.go').click(); });
+    });
+  }
+
+  function showLeaderboard() {
+    dlgOpen('<h2>Leaderboard</h2><div id="lb">Loading...</div><div class="row"><button class="go">Close</button></div>', c => {
+      c.querySelector('.go').onclick = dlgClose;
+      Online.leaderboard().then(r => {
+        const el = c.querySelector('#lb');
+        if (!r.ok) { el.textContent = r.error; return; }
+        el.innerHTML = '<table>' + r.rows.map((p, i) => '<tr><td>' + (i + 1) + '</td><td>' + esc(p.username) + '</td><td>' + p.rating + '</td><td>' + p.wins + ' W / ' + p.losses + ' L</td></tr>').join('') + '</table>';
+      });
+    });
+  }
+
+  function openOnline() {
+    if (!Online.enabled) {
+      infoDialog('Online play is not set up yet', 'Add your Supabase URL and anon key to js/config.js (see supabase/SETUP.md).');
+      return;
+    }
+    if (!Online.signedIn) { showAuth(() => startDeckBuild('online')); return; }
+    startDeckBuild('online');
+  }
+
+  function drawAccountChip() {
+    if (!Online.enabled) return;
+    if (Online.signedIn) {
+      const p = Online.profile;
+      txt((p ? p.username : '...') + (p ? '  \u00B7  ' + p.rating : ''), W - 24, 40, 20, TX, 'right');
+      button(W - 24 - 112, 54, 112, 38, 'Sign out', () => { Online.signOut(); resumeRow = null; }, { size: 15 });
+      button(W - 24 - 112 - 130, 54, 120, 38, 'Leaderboard', showLeaderboard, { size: 15 });
+      if (resumeRow) button(W - 24 - 262, 102, 262, 44, 'Resume online match', () => enterMatch(resumeRow), { size: 17, col: '#81b64c', hot: '#95c95d' });
+    } else {
+      button(W - 24 - 130, 20, 130, 44, 'Sign in', () => showAuth(() => {}), { size: 18 });
+    }
+  }
+  function refreshResume() {
+    if (Online.enabled && Online.signedIn) Online.activeMatch().then(r => { resumeRow = r; });
+  }
+
+  /* ---- matchmaking ---- */
+  async function startSearch(kind, code) {
+    saveDeck();
+    queue = { id: null, code: null, kind, stop: null };
+    screen = 'queue';
+    const deck = deckCounts[0];
+    const r = kind === 'code' ? await Online.joinCode(code, deck)
+      : kind === 'private' ? await Online.createPrivate(deck, timeCtl)
+        : await Online.findMatch(deck, timeCtl);
+    if (!queue) return;                       // cancelled while waiting for the server
+    if (!r.ok) { queue = null; screen = 'deck'; infoDialog('Could not start', r.error); return; }
+    const row = r.data;
+    if (row.status === 'active') { enterMatch(row); return; }
+    queue.id = row.id; queue.code = row.code;
+    queue.stop = Online.waitForOpponent(row.id, enterMatch);
+  }
+  function cancelQueue() {
+    if (queue) { if (queue.stop) queue.stop(); if (queue.id) Online.cancel(queue.id); }
+    queue = null; screen = 'deck';
+  }
+  function drawQueue() {
+    drawBackdrop(true);
+    const dots = '.'.repeat(1 + Math.floor(Date.now() / 400) % 3);
+    txt('Looking for an opponent' + dots, W / 2, 300, 44, '#fff', 'center');
+    const tl = timeCtl ? timeCtl / 60 + ' min per player' : 'untimed';
+    txt('Time control: ' + tl, W / 2, 346, 20, DIM, 'center');
+    if (queue && queue.code) {
+      txt('Invite code', W / 2, 430, 22, DIM, 'center');
+      txt(queue.code, W / 2, 510, 84, ACC, 'center');
+      txt('Send this code to your friend. They pick "Join code".', W / 2, 556, 20, DIM, 'center');
+    }
+    button(650, 620, 300, 64, 'Cancel', cancelQueue, { size: 24 });
+  }
+
+  /* ---- live match ---- */
+  async function enterMatch(row) {
+    if (queue && queue.stop) queue.stop();
+    queue = null;
+    mode = 'online';
+    ol = { row, side: row.p0 === Online.userId ? 0 : 1, used: [0, 0], lastTs: Date.parse(row.started_at), moves: 0, pending: false, reported: false, names: ['', ''] };
+    C.newGame([row.deck0, row.deck1], row.seed);
+    screen = 'place'; placeFor = 0; sel = null; spawnCard = null; selMode = 'normal'; arrows = []; marks = [];
+    overSent = false; confirmMenu = false; paused = false; pass = null; clock.on = false;
+    say(ol.side === 0 ? 'Place your Villager (king) in your spawn zone.' : 'Waiting for the opponent to place their Villager...');
+    await Online.syncClock();
+    const res = await Online.openMatch(row.id, { onMove: onOnlineMove, onMatch: r => { if (ol) ol.row = r; } });
+    if (!res.ok) { infoDialog('Could not open the match', res.error); toMenu(); return; }
+    if (ol) {
+      ol.names[0] = (res.profiles[row.p0] || {}).username || 'Blue';
+      ol.names[1] = (res.profiles[row.p1] || {}).username || 'Red';
+    }
+  }
+
+  function onOnlineMove(r) {
+    if (!ol) return;
+    const mine = r.player === ol.side;
+    const ts = Date.parse(r.created_at);
+    ol.used[r.player] += Math.max(0, ts - ol.lastTs);
+    ol.lastTs = ts;
+    const res = C.applyAction(r.action);
+    if (!res.ok) {
+      if (!mine && !ol.reported) {
+        ol.reported = true;
+        Online.report(ol.row.id, ol.side, 'illegal move');
+        infoDialog('Illegal move', 'Your opponent sent a move the rules do not allow. The match was reported.');
+      }
+      return;
+    }
+    ol.moves++;
+    arrows = []; marks = [];
+    spawnCard = null; selMode = 'normal';
+    if (!mine || (sel && !sel.alive)) sel = null;
+    const g = G();
+    if (g.phase === 'place') {
+      placeFor = g.players[0].villager ? 1 : 0;
+      say(placeFor === ol.side ? 'Place your Villager (king) in your spawn zone.' : 'Waiting for the opponent to place their Villager...');
+    } else if (screen === 'place') {
+      screen = 'play';
+      say(g.cur === ol.side ? 'Your turn.' : "Opponent's turn.");
+      post({ type: 'ready' });
+    } else if (r.action.t === 'end') say(g.cur === ol.side ? 'Your turn.' : "Opponent's turn.");
+    if (g.winner !== null) onlineFinished();
+  }
+
+  function onlineFinished() {
+    if (!ol || ol.finished) return;
+    ol.finished = true;
+    onWin();
+    if (ol.reported) return;
+    ol.reported = true;
+    const g = G();
+    Online.report(ol.row.id, g.winner, g.timeout ? 'timeout' : g.resigned ? 'resign' : 'villager')
+      .then(() => setTimeout(() => Online.loadProfile(), 1500));
+  }
+
+  function tickOnlineClock() {
+    const g = G(), base = ol.row.time_ctl * 1000;
+    clock.on = base > 0;
+    if (!clock.on) return;
+    const mover = screen === 'place' ? placeFor : g.cur;
+    const live = g.winner === null ? Math.max(0, Online.serverNow() - ol.lastTs) : 0;
+    for (let p = 0; p < 2; p++) clock.ms[p] = Math.max(0, base - ol.used[p] - (p === mover ? live : 0));
+    if (g.winner === null && clock.ms[mover] <= 0) {
+      g.loser = mover; g.winner = 1 - mover; g.timeout = true;
+      onlineFinished();
+    }
+  }
+
+  function resignOnline() {
+    confirmMenu = false;
+    if (!ol || G().winner !== null) { toMenu(); return; }
+    Online.send(ol.side, { t: 'resign', p: ol.side }).then(() => setTimeout(toMenu, 400));
+  }
+
+  if (Online.enabled) {
+    Online.init();
+    Online.onChange(() => refreshResume());
+  }
 
   post({ type: 'ready' });
   requestAnimationFrame(frame);

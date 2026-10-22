@@ -202,6 +202,78 @@ const MINIONS = [
     attack:"Sonic strike on any target up to 3 squares away in a straight line, or on any diagonal neighbour.",
     ability:"A heavy hitter with huge reach.",
     movePattern:[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]], attackPattern:[[-1,0],[-2,0],[-3,0],[1,0],[2,0],[3,0],[0,-1],[0,-2],[0,-3],[0,1],[0,2],[0,3],[-1,-1],[-1,1],[1,-1],[1,1]], copyLimit:"Deck limit: max 1 per deck"
+  },
+  {
+    id:"cavespider", name:"Cave Spider", cost:1, tier:"offense", extra:true,
+    img:"assets/minions/cavespider.png",
+    move:"One of the three squares directly ahead.",
+    attack:"The 3 squares directly ahead.",
+    ability:"A venomous little skirmisher that only bites what it walks into.",
+    movePattern:[[-1,-1],[-1,0],[-1,1]], attackPattern:[[-1,-1],[-1,0],[-1,1]]
+  },
+  {
+    id:"chicken", name:"Chicken", cost:1, tier:"support", extra:true,
+    img:"assets/minions/chicken.png",
+    move:"Any of the 8 surrounding squares.",
+    attack:"None - the Chicken can't attack.",
+    ability:"Lays an egg on spawn: its 1 mana is refunded, so it's a free body for the board.",
+    movePattern:[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]], attackPattern:[]
+  },
+  {
+    id:"bat", name:"Bat", cost:2, tier:"offense", extra:true,
+    img:"assets/minions/bat.png",
+    move:"Flutters to any of the 8 surrounding squares, or 2 squares laterally.",
+    attack:"Dives on any of the 4 diagonal squares around it.",
+    ability:"Erratic and hard to pin down.",
+    movePattern:[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1],[-2,0],[2,0],[0,-2],[0,2]], attackPattern:[[-1,-1],[-1,1],[1,-1],[1,1]]
+  },
+  {
+    id:"goat", name:"Goat", cost:2, tier:"offense", extra:true,
+    img:"assets/minions/goat.png",
+    move:"Forward 1 or 2 squares.",
+    attack:"Rams forward up to 2 squares, landing on the target square and destroying it.",
+    ability:"Charges straight at whatever is in front of it.",
+    movePattern:[[-1,0],[-2,0]], attackPattern:[[-1,0],[-2,0]]
+  },
+  {
+    id:"camel", name:"Camel", cost:3, tier:"offense", extra:true,
+    img:"assets/minions/camel.png",
+    move:"Forward 1 or 2 squares, 1 square sideways or 1 square back.",
+    attack:"Spits at the 2 squares straight ahead and the 2 forward diagonals.",
+    ability:"A sturdy long-legged marcher with a nasty spit.",
+    movePattern:[[-1,0],[-2,0],[1,0],[0,-1],[0,1]], attackPattern:[[-1,0],[-2,0],[-1,-1],[-1,1]]
+  },
+  {
+    id:"breeze", name:"Breeze", cost:3, tier:"offense", extra:true,
+    img:"assets/minions/breeze.png",
+    move:"Any of the 8 surrounding squares.",
+    attack:"Wind charge: hits exactly 2 squares away in any of the 8 directions - never adjacent.",
+    ability:"Keeps its distance. Enemies standing right next to it are safe.",
+    movePattern:[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]], attackPattern:[[-2,0],[2,0],[0,-2],[0,2],[-2,-2],[-2,2],[2,-2],[2,2]]
+  },
+  {
+    id:"armadillo", name:"Armadillo", cost:3, tier:"defense", extra:true,
+    img:"assets/minions/armadillo.png",
+    move:"1 square, laterally only.",
+    attack:"Rolls into the 3 squares directly ahead.",
+    ability:"Armored shell: the first attack against it is blocked and breaks the shell. After that it dies like anything else.",
+    movePattern:[[-1,0],[1,0],[0,-1],[0,1]], attackPattern:[[-1,-1],[-1,0],[-1,1]]
+  },
+  {
+    id:"bogged", name:"Bogged", cost:4, tier:"offense", extra:true,
+    img:"assets/minions/bogged.png",
+    move:"1 square, laterally only.",
+    attack:"Poison arrows up to 3 squares away in any lateral direction, ignoring cover.",
+    ability:"A slow marsh archer with a long reach.",
+    movePattern:[[-1,0],[1,0],[0,-1],[0,1]], attackPattern:[[-1,0],[-2,0],[-3,0],[1,0],[2,0],[3,0],[0,-1],[0,-2],[0,-3],[0,1],[0,2],[0,3]]
+  },
+  {
+    id:"ghast", name:"Ghast", cost:5, tier:"offense", extra:true,
+    img:"assets/minions/ghast.png",
+    move:"Any of the 8 surrounding squares.",
+    attack:"Fireball: hits a target 2 to 4 squares away in a straight lateral line - never closer.",
+    ability:"A floating artillery piece. Get close to it and it can't touch you.",
+    movePattern:[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]], attackPattern:[[-2,0],[-3,0],[-4,0],[2,0],[3,0],[4,0],[0,-2],[0,-3],[0,-4],[0,2],[0,3],[0,4]], copyLimit:"Deck limit: max 1 per deck"
   }
 ];
 

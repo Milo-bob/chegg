@@ -8,18 +8,28 @@ const Chegg = (function () {
 
   const COLS = 8, ROWS = 12, MAX_MANA = 6, DECK_SIZE = 15, OPENING_HAND = 3;
   const NAMES = ['Blue', 'Red'];
-  const LIMITS = { frog: 2, wither: 1, warden: 1, allay: 2 };
+  const LIMITS = { frog: 2, wither: 1, warden: 1, allay: 2, ghast: 1 };
   const ATK = {
     villager: 'target', zombie: 'target', creeper: 'area', pufferfish: 'area', irongolem: 'dir',
     enderman: 'target', skeleton: 'target', blaze: 'target', phantom: 'target', slime: 'target',
     shulkerbox: 'target', wither: 'dir',
-    wolf: 'target', bee: 'target', spider: 'target', snowgolem: 'target', horse: 'target', warden: 'target'
+    wolf: 'target', bee: 'target', spider: 'target', snowgolem: 'target', horse: 'target', warden: 'target',
+    cavespider: 'target', bat: 'target', goat: 'target', camel: 'target', breeze: 'target', armadillo: 'target', bogged: 'target', ghast: 'target'
   };
-  const LANDS = { villager: 1, slime: 1, shulkerbox: 1, horse: 1 }; // attacker moves onto the target square
+  const LANDS = { villager: 1, slime: 1, shulkerbox: 1, horse: 1, goat: 1 }; // attacker moves onto the target square
   const DIRS = [[1, 0, '→'], [-1, 0, '←'], [0, -1, '↑'], [0, 1, '↓']];
 
   let G = null;
   let uid = 1;
+  let rng = Math.random;          // seeded per match so online clients stay in lockstep
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
 
   const inb = (x, y) => x >= 0 && y >= 0 && x < COLS && y < ROWS;
   const at = (x, y) => (inb(x, y) ? G.board[y][x] : null);
@@ -48,7 +58,7 @@ const Chegg = (function () {
 
   function shuffle(a) {
     for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(rng() * (i + 1));
       [a[i], a[j]] = [a[j], a[i]];
     }
     return a;
@@ -72,13 +82,15 @@ const Chegg = (function () {
   }
   function countsToList(counts) {
     const l = [];
-    for (const id in counts) for (let i = 0; i < counts[id]; i++) l.push(id);
+    for (const id of Object.keys(counts).sort()) for (let i = 0; i < counts[id]; i++) l.push(id);
     return l;
   }
 
   function log(s) { G.log.push(s); if (G.log.length > 60) G.log.shift(); }
 
-  function newGame(deckCounts) {
+  function newGame(deckCounts, seed) {
+    uid = 1;
+    rng = (seed === undefined || seed === null) ? Math.random : mulberry32(seed);
     G = {
       board: Array.from({ length: ROWS }, () => Array(COLS).fill(null)),
       players: [0, 1].map(i => ({
@@ -152,6 +164,12 @@ const Chegg = (function () {
   /* ---------- removal & effects ---------- */
   function kill(m, by) {
     if (!m || !m.alive) return;
+    if (m.id === 'armadillo' && m.shell !== false && by && by !== m) {
+      m.shell = false;
+      addFx('flash', m.x, m.y);
+      log(NAMES[m.owner] + ' Armadillo\'s shell absorbed the hit.');
+      return;
+    }
     m.alive = false;
     G.board[m.y][m.x] = null;
     addFx('boom', m.x, m.y);
@@ -159,7 +177,7 @@ const Chegg = (function () {
     if (m.id === 'pig') draw(m.owner, 1);
     if (m.id === 'sniffer') {
       const h = G.players[m.owner].hand;
-      for (let i = 0; i < 2 && h.length; i++) h.splice(Math.floor(Math.random() * h.length), 1);
+      for (let i = 0; i < 2 && h.length; i++) h.splice(Math.floor(rng() * h.length), 1);
     }
   }
 
@@ -369,6 +387,7 @@ const Chegg = (function () {
     const m = spawnMinion(pi, opt.id, opt.click.x, opt.click.y);
     log(NAMES[pi] + ' spawned ' + m.def.name + '.');
     if (opt.id === 'pig') draw(pi, 1);
+    if (opt.id === 'chicken') { P.mana += 1; log('Chicken laid an egg: 1 mana refunded.'); }
     if (opt.id === 'allay') { P.mana += 2; log('Allay: +2 mana.'); }
     if (opt.id === 'sniffer') {
       const opp = G.players[other(pi)];
@@ -391,6 +410,46 @@ const Chegg = (function () {
     if (opt.kind === 'attack') opt.m.acted = true;
     opt.run();
     checkWin();
+  }
+
+  /* ---------- action API (online lockstep) ---------- */
+  function optKey(o) {
+    return [o.kind, o.m ? o.m.uid : '', o.kind === 'spawn' ? o.card : '', o.click ? o.click.x + ',' + o.click.y : '', o.label || ''].join('|');
+  }
+  function allOptions() {
+    const pi = G.cur, P = G.players[pi];
+    let out = [];
+    for (let i = 0; i < P.hand.length; i++) out = out.concat(spawnOptions(pi, i));
+    for (const m of minionsOf(pi)) {
+      out = out.concat(actionsFor(m, 'normal'));
+      if (hasSpecial(m)) out = out.concat(actionsFor(m, 'special'));
+    }
+    return out;
+  }
+  const BAD = err => ({ ok: false, err });
+  // a = {t:'place',p,x,y} | {t:'opt',p,k} | {t:'end',p} | {t:'resign',p}
+  function applyAction(a) {
+    if (!G || G.winner !== null) return BAD('game over');
+    if (a.t === 'resign') {
+      G.loser = a.p; G.winner = other(a.p); G.resigned = true; log(NAMES[a.p] + ' resigned.');
+      return { ok: true };
+    }
+    if (a.t === 'place') {
+      if (G.phase !== 'place') return BAD('not placing');
+      const p = G.players[0].villager ? 1 : 0;
+      if (a.p !== p || !placeVillager(p, a.x, a.y)) return BAD('bad placement');
+      if (G.players[0].villager && G.players[1].villager) startMatch();
+      return { ok: true };
+    }
+    if (G.phase !== 'play' || a.p !== G.cur) return BAD('not your turn');
+    if (a.t === 'end') { endTurn(); return { ok: true }; }
+    if (a.t === 'opt') {
+      const o = allOptions().find(q => optKey(q) === a.k);
+      if (!o) return BAD('illegal action');
+      perform(o);
+      return { ok: true };
+    }
+    return BAD('unknown action');
   }
 
   /* ---------- AI ---------- */
@@ -423,7 +482,8 @@ const Chegg = (function () {
       const id = opt.id;
       if (id === 'cat') s = catCount(pi) ? -5 : 7;
       if (id === 'pig') s = 4;
-      if (id === 'allay') s = P0.mana >= 5 ? 5 : 3;
+      if (id === 'chicken') s = 3.5;
+      if (id === 'allay') s =P0.mana >= 5 ? 5 : 3;
       if (id === 'sniffer') s = 3;
       if (id === 'parrot' || id === 'frog' || id === 'enderman') s -= 2;
       if (id === 'creeper') s -= 1;
@@ -489,7 +549,7 @@ const Chegg = (function () {
   return {
     DEF, MIN, COLS, ROWS, DECK_SIZE, NAMES, LIMITS, DIRS,
     get G() { return G; },
-    newGame, placeVillager, startMatch, endTurn, perform, actionsFor, spawnOptions, hasSpecial,
+    newGame, applyAction, allOptions, optKey, placeVillager, startMatch, endTurn, perform, actionsFor, spawnOptions, hasSpecial,
     randomDeck, zoneOf, dark, inb, at, minionsOf, aiNext, checkWin, countsToList
   };
 })();

@@ -12,12 +12,35 @@
     height: min(100vh, calc(100vw * 9 / 16));
     image-rendering: pixelated; touch-action: none; display: block; background: #15151c;
   }
+  #dlg { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.65); font-family: "Noto Sans", "Segoe UI", Arial, sans-serif; z-index: 10; }
+  #dlg.on { display: flex; }
+  #dlg .card { background: #262522; color: #f1f0ee; border-radius: 10px; padding: 26px 28px; width: min(400px, 92vw); box-shadow: 0 12px 40px rgba(0,0,0,.5); max-height: 90vh; overflow: auto; }
+  #dlg h2 { margin: 0 0 14px; font-size: 22px; }
+  #dlg p { margin: 0 0 14px; color: #c3c2c1; line-height: 1.4; }
+  #dlg input { width: 100%; box-sizing: border-box; margin: 6px 0; padding: 11px 12px; border-radius: 6px; border: 1px solid #3d3a37; background: #1f1e1b; color: #fff; font-size: 16px; }
+  #dlg input:focus { outline: 2px solid #81b64c; }
+  #dlg .err { color: #ff7f75; min-height: 22px; font-size: 14px; margin: 4px 0; }
+  #dlg .row { display: flex; gap: 10px; margin-top: 10px; }
+  #dlg button { flex: 1; padding: 12px; border: 0; border-bottom: 4px solid #2b2a28; border-radius: 8px; background: #454441; color: #fff; font-size: 16px; font-weight: 600; cursor: pointer; }
+  #dlg button:hover { background: #55534f; }
+  #dlg button.go { background: #81b64c; border-bottom-color: #45753c; }
+  #dlg button.go:hover { background: #95c95d; }
+  #dlg .tabs { display: flex; gap: 8px; margin-bottom: 10px; }
+  #dlg .tabs button { border-bottom-width: 3px; padding: 9px; }
+  #dlg .tabs button.on { background: #81b64c; border-bottom-color: #45753c; }
+  #dlg table { width: 100%; border-collapse: collapse; }
+  #dlg td { padding: 6px 8px; border-bottom: 1px solid #3d3a37; font-size: 15px; }
+  #dlg td:first-child { color: #989795; width: 28px; }
 </style>
 </head>
 <body>
 <canvas id="c" width="1600" height="900"></canvas>
+<div id="dlg"></div>
 <script src="js/data.js"></script>
 <script src="js/rules.js"></script>
+<script src="js/config.js"></script>
+<script src="js/vendor/supabase.js"></script>
+<script src="js/online.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>
