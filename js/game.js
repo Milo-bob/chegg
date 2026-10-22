@@ -1,4 +1,4 @@
-/* CHEGG - UI layer (canvas). Rules live in rules.js. Minecraft-style GUI. */
+/* CHEGG - UI layer (canvas). Rules live in rules.js. chess.com-inspired UI. */
 (function () {
   'use strict';
   const C = Chegg;
@@ -7,8 +7,8 @@
   const ctx = canvas.getContext('2d');
   const PCOL = ['#3f7ae8', '#e04a42'];
   const PCOL_D = ['#1b3b8a', '#8a1f1b'];
-  const FONT = '"Segoe UI", "Trebuchet MS", Helvetica, Arial, sans-serif';
-  const TX = '#e8ebf7', DIM = '#8c95b5', ACC = '#f2b84b', LINE = '#2f3858';
+  const FONT = '"Noto Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif';
+  const TX = '#f1f0ee', DIM = '#989795', ACC = '#e8b93a', LINE = '#3d3a37', GREEN = '#81b64c';
 
   /* ---------- assets ---------- */
   const img = {};
@@ -21,8 +21,9 @@
     img[key] = i;
   }
   C.MIN.forEach(d => load(d.id, d.img));
-  ['redstone_lamp', 'redstone_lamp_on', 'basalt', 'lightgrayconcrete', 'blueconcrete', 'lightblueconcrete', 'redconcrete', 'orangeconcrete']
+  ['basalt', 'lightgrayconcrete', 'blueconcrete', 'lightblueconcrete', 'redconcrete', 'orangeconcrete']
     .forEach(t => load(t, 'assets/tiles/' + t + '.jpg'));
+  ['redstone_lamp', 'redstone_lamp_on'].forEach(t => load(t, 'assets/tiles/' + t + '.png'));
 
   /* ---------- state ---------- */
   let screen = 'menu';            // menu | help | deck | place | play
@@ -92,35 +93,28 @@
     ctx.closePath();
   }
   function panel(x, y, w, h) {
-    rr(x, y, w, h, 10);
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    g.addColorStop(0, '#1d2133'); g.addColorStop(1, '#14172a');
-    ctx.fillStyle = g; ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = LINE; ctx.stroke();
-    ctx.fillStyle = ACC; ctx.globalAlpha = 0.8; ctx.fillRect(x + 14, y, 46, 3); ctx.globalAlpha = 1;
+    rr(x, y, w, h, 8);
+    ctx.fillStyle = '#262522'; ctx.fill();
   }
   function slot(x, y, w, h, fill) {
-    rr(x, y, w, h, 7);
-    ctx.fillStyle = fill || '#0d0f1b'; ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = LINE; ctx.stroke();
+    rr(x, y, w, h, 6);
+    ctx.fillStyle = fill || '#1f1e1b'; ctx.fill();
   }
   function sprite(id, cx, cy, size) {
     const i = img[id];
     if (i && i.complete && i.naturalWidth) ctx.drawImage(i, cx - size / 2, cy - size / 2, size, size);
   }
+  // chess.com style button: flat face with a darker 4px bottom edge
   function button(x, y, w, h, label, fn, o) {
     o = o || {};
     const en = o.enabled !== false;
     const hov = en && inRect(mouse.x, mouse.y, x, y, w, h);
-    const base = o.col || '#2b3454', hot = o.hot || '#3b4778';
-    rr(x, y, w, h, 8);
-    const g = ctx.createLinearGradient(0, y, 0, y + h);
-    const c1 = !en ? '#1a1d2a' : hov ? hot : base;
-    g.addColorStop(0, c1); g.addColorStop(1, !en ? '#151824' : shade(c1, -0.28));
-    ctx.fillStyle = g; ctx.fill();
-    ctx.lineWidth = 2; ctx.strokeStyle = !en ? '#262b40' : hov ? ACC : (o.edge || '#4a5686'); ctx.stroke();
+    const base = o.col || '#454441', hot = o.hot || '#55534f';
+    const face = !en ? '#383633' : hov ? hot : base;
+    rr(x, y, w, h, 8); ctx.fillStyle = !en ? '#2a2927' : shade(base, -0.45); ctx.fill();
+    rr(x, y, w, h - 4, 8); ctx.fillStyle = face; ctx.fill();
     const sz = o.size || 20;
-    txt(label, x + w / 2, y + h / 2 + sz * 0.34, sz, !en ? '#59607c' : hov ? '#fff' : TX, 'center');
+    txt(label, x + w / 2, y + (h - 4) / 2 + sz * 0.34, sz, !en ? '#6f6d6a' : '#fff', 'center');
     btns.push({ x, y, w, h, fn, enabled: en });
     if (hov && o.preview) hoverBtnPreview = o.preview;
     if (hov && o.cost) hoverCostNext = o.cost;
@@ -159,9 +153,9 @@
 
   function drawPattern(d, x, y, cell) {
     // 7x7 diagram; "forward" is up
-    rect(x - 3, y - 3, 7 * cell + 6, 7 * cell + 6, LINE);
+    rect(x - 2, y - 2, 7 * cell + 4, 7 * cell + 4, LINE);
     for (let r = -3; r <= 3; r++) for (let c = -3; c <= 3; c++) {
-      rect(x + (c + 3) * cell, y + (r + 3) * cell, cell, cell, (r + c) % 2 ? '#141729' : '#1a1e33');
+      rect(x + (c + 3) * cell, y + (r + 3) * cell, cell, cell, (r + c) % 2 ? '#262522' : '#2e2c29');
     }
     const mark = (p, col, inset) => {
       for (const [r, c] of p) {
@@ -202,7 +196,7 @@
     const n = Math.max(6, max);
     const gap = 6, size = Math.min(w, Math.floor((h - (n - 1) * gap) / n));
     const lx = x + (w - size) / 2;
-    rect(x - 8, y - 8, w + 16, h + 16, '#0b0d17', LINE, 2);
+    rr(x - 8, y - 8, w + 16, h + 16, 8); ctx.fillStyle = '#1f1e1b'; ctx.fill();
     ctx.imageSmoothingEnabled = false;
     for (let i = 0; i < n; i++) {
       const ly = y + h - (i + 1) * size - i * gap;
@@ -225,12 +219,7 @@
 
   /* ---------- screens ---------- */
   function drawBackdrop() {
-    const g = ctx.createRadialGradient(W / 2, H * 0.4, 100, W / 2, H / 2, 1000);
-    g.addColorStop(0, '#1b2036'); g.addColorStop(1, '#090b14');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-    // faint checkerboard echo
-    ctx.fillStyle = 'rgba(255,255,255,0.018)';
-    for (let x = 0; x < 20; x++) for (let y = 0; y < 12; y++) if ((x + y) % 2) ctx.fillRect(x * 80, y * 80, 80, 80);
+    ctx.fillStyle = '#302e2b'; ctx.fillRect(0, 0, W, H);
   }
 
   function drawMenu() {
@@ -241,19 +230,13 @@
       ctx.beginPath(); ctx.ellipse(cx, 352, 30, 7, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
       sprite(id, cx, cy, 84);
     });
-    // title with amber gradient and soft glow
-    setFont(150);
     ctx.textAlign = 'center';
-    ctx.save();
-    ctx.shadowColor = 'rgba(242,184,75,0.55)'; ctx.shadowBlur = 40;
-    const g = ctx.createLinearGradient(0, 110, 0, 230);
-    g.addColorStop(0, '#ffe3a0'); g.addColorStop(1, '#e8962a');
-    ctx.fillStyle = g; ctx.fillText('CHEGG', W / 2, 215);
-    ctx.restore();
+    ctx.fillStyle = '#fff'; ctx.font = '800 130px ' + FONT; ctx.fillText('Chegg', W / 2, 205);
+    ctx.fillStyle = GREEN; ctx.fillRect(W / 2 - 60, 226, 120, 6);
     txt('Chess × Egg — the deck-building duel', W / 2, 400, 28, ACC, 'center');
-    button(540, 440, 520, 66, 'Play vs Computer', () => startDeckBuild('ai'), { size: 26, col: '#2f6a58', hot: '#3b8a72', edge: '#4fb596' });
-    button(540, 524, 520, 66, 'Local 2 Players', () => startDeckBuild('local'), { size: 26 });
-    button(540, 608, 520, 66, 'How to Play', () => { screen = 'help'; }, { size: 26 });
+    button(540, 440, 520, 72, 'Play vs Computer', () => startDeckBuild('ai'), { size: 28, col: '#81b64c', hot: '#95c95d' });
+    button(540, 526, 520, 72, 'Local 2 Players', () => startDeckBuild('local'), { size: 28 });
+    button(540, 612, 520, 72, 'How to Play', () => { screen = 'help'; }, { size: 28 });
     txt('Based on the Minecraft minigame CHEGG by Gerg', W / 2, 850, 16, DIM, 'center');
   }
 
@@ -301,7 +284,7 @@
       if (over) hov = d;
       const cnt = counts[d.id] || 0;
       panel(x, y, w, h);
-      if (cnt) rect(x, y, w, h, null, '#ffd23f', 4);
+      if (cnt) { rr(x, y, w, h, 8); ctx.lineWidth = 3; ctx.strokeStyle = GREEN; ctx.stroke(); }
       slot(x + w / 2 - 38, y + 14, 76, 76);
       sprite(d.id, x + w / 2, y + 52, 62);
       txt(d.name, x + w / 2, y + 116, 20, TX, 'center');
@@ -325,7 +308,7 @@
       if (mode === 'ai') { deckCounts[1] = C.randomDeck(); beginMatch(); }
       else if (buildFor === 0) { buildFor = 1; }
       else beginMatch();
-    }, { enabled: n === C.DECK_SIZE, size: 26, col: '#2f6a58', hot: '#3b8a72', edge: '#4fb596' });
+    }, { enabled: n === C.DECK_SIZE, size: 26, col: '#81b64c', hot: '#95c95d' });
   }
 
   /* ---- match flow ---- */
@@ -413,28 +396,40 @@
     }
     if (hc && C.at(hc.x, hc.y)) hoverNext = C.at(hc.x, hc.y).def;
     // board frame
-    panel(BX - 10, BY - 10, COLS * CELL + 20, ROWS * CELL + 20);
+    rr(BX - 6, BY - 6, COLS * CELL + 12, ROWS * CELL + 12, 6); ctx.fillStyle = '#1f1e1b'; ctx.fill();
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) drawTile(x, y);
     if (placing) {
       for (const y of C.zoneOf(placeFor)) for (let x = 0; x < COLS; x++) {
-        if (!C.at(x, y)) rect(BX + x * CELL, BY + y * CELL, CELL, CELL, 'rgba(255,255,255,0.25)', '#fff', 3);
+        if (!C.at(x, y)) { ctx.beginPath(); ctx.arc(BX + x * CELL + CELL / 2, BY + y * CELL + CELL / 2, CELL * 0.17, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fill(); }
       }
     }
-    for (const o of opts) {
-      if (!o.click) continue;
-      const px = BX + o.click.x * CELL, py = BY + o.click.y * CELL;
-      const col = o.kind === 'move' ? '63,207,106' : o.kind === 'attack' ? '238,75,75' : o.kind === 'special' ? '190,110,255' : '90,160,255';
-      rect(px, py, CELL, CELL, 'rgba(' + col + ',0.35)', 'rgb(' + col + ')', 3);
-    }
+    if (sel && sel.alive) rect(BX + sel.x * CELL, BY + sel.y * CELL, CELL, CELL, 'rgba(247,236,89,0.55)');
+    if (preview) for (const q of preview) rect(BX + q.x * CELL, BY + q.y * CELL, CELL, CELL, 'rgba(235,97,80,0.5)');
     for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
       const m = g.board[y][x];
       if (m) drawMinion(m, BX + x * CELL, BY + y * CELL);
     }
+    // chess.com style hints: dots for free squares, rings for captures
+    for (const o of opts) {
+      if (!o.click) continue;
+      const cx = BX + o.click.x * CELL + CELL / 2, cy = BY + o.click.y * CELL + CELL / 2;
+      const hit = !!C.at(o.click.x, o.click.y) && o.kind !== 'spawn';
+      ctx.beginPath();
+      if (hit) {
+        ctx.arc(cx, cy, CELL * 0.45, 0, Math.PI * 2); ctx.lineWidth = 6;
+        ctx.strokeStyle = o.kind === 'special' ? 'rgba(150,110,255,0.85)' : 'rgba(224,60,50,0.85)'; ctx.stroke();
+      } else {
+        ctx.arc(cx, cy, CELL * 0.17, 0, Math.PI * 2);
+        ctx.fillStyle = o.kind === 'special' ? 'rgba(150,110,255,0.85)' : 'rgba(10,10,10,0.42)'; ctx.fill();
+      }
+      if (hc && hc.x === o.click.x && hc.y === o.click.y) {
+        ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.strokeRect(BX + hc.x * CELL + 2, BY + hc.y * CELL + 2, CELL - 4, CELL - 4);
+      }
+    }
     for (const o of opts) {
       if (o.click && o.cost > 0 && o.kind !== 'spawn') txt(String(o.cost), BX + o.click.x * CELL + CELL - 6, BY + o.click.y * CELL + CELL - 6, 18, '#fff', 'right');
     }
-    if (sel && sel.alive) rect(BX + sel.x * CELL, BY + sel.y * CELL, CELL, CELL, null, '#ffd23f', 4);
-    if (preview) for (const s of preview) rect(BX + s.x * CELL, BY + s.y * CELL, CELL, CELL, 'rgba(255,150,40,0.35)', '#ff9628', 3);
     // fx
     const now = Date.now();
     g.fx = g.fx.filter(f => now - f.t < 600);
@@ -445,7 +440,6 @@
       ctx.lineWidth = 8 * (1 - k) + 1; ctx.stroke();
     }
     if (placing) {
-      txt('Place your Villager (king) in your spawn zone', RP.x + RP.w / 2, 120, 22, ACC, 'center');
       drawSidePanels(true);
       return;
     }
@@ -462,6 +456,7 @@
     panel(RP.x, RP.y, RP.w, RP.h);
     if (placing) {
       txt(C.NAMES[placeFor] + ' places the king', LP.x + LP.w / 2, 70, 30, PCOL[placeFor], 'center');
+      drawRight(false);
       return;
     }
     const P = g.players[g.cur];
@@ -486,7 +481,7 @@
       let by = LP.y + LP.h - 18 - nb * 40;
       if (selMode === 'normal') {
         bl.forEach(o => {
-          button(lx, by, LP.w - 48, 34, o.label, () => { C.perform(o); afterAction(); }, { preview: o.affected, cost: o.cost, size: 18, col: '#7a2f38', hot: '#a8424e', edge: '#d0606c' });
+          button(lx, by, LP.w - 48, 34, o.label, () => { C.perform(o); afterAction(); }, { preview: o.affected, cost: o.cost, size: 18, col: '#b83b32', hot: '#cf4b41' });
           by += 40;
         });
       }
@@ -494,22 +489,41 @@
         const sp = C.actionsFor(sel, 'special');
         const label = selMode === 'special' ? 'Cancel special' : (sel.id === 'frog' ? 'Special: Pull (1)' : 'Special: Teleport (1)');
         button(lx, by, LP.w - 48, 34, label, () => { selMode = selMode === 'special' ? 'normal' : 'special'; },
-          { enabled: selMode === 'special' || sp.length > 0, size: 18, col: '#4d3a85', hot: '#6b52b0', edge: '#9a86e0' });
+          { enabled: selMode === 'special' || sp.length > 0, size: 18, col: '#6b52b0', hot: '#8366cc' });
       }
     }
-    // right panel
-    const rx = RP.x + 24;
-    const opp = g.players[1 - g.cur];
-    txt('Opponent', rx, 58, 28, TX, 'left');
-    txt('Hand ' + opp.hand.length + '   Deck ' + opp.deck.length, rx, 88, 20, TX, 'left');
-    txt('You', rx, 130, 28, TX, 'left');
-    txt('Deck ' + P.deck.length, rx, 160, 20, TX, 'left');
-    if (msg && Date.now() - msgT < 8000) {
-      slot(rx, 215, RP.w - 48, 130, '#1a1830');
-      wrap(msg, rx + 12, 245, RP.w - 72, 17, 22, ACC);
+    drawRight(human);
+  }
+
+  function playerBar(pi, y) {
+    const g = G(), P = g.players[pi];
+    const rx = RP.x + 16, w = RP.w - 32;
+    const active = g.cur === pi && g.winner === null;
+    rr(rx, y, w, 84, 8); ctx.fillStyle = active ? '#3d3a37' : '#2d2b28'; ctx.fill();
+    if (active) { ctx.fillStyle = GREEN; ctx.fillRect(rx, y + 12, 4, 60); }
+    slot(rx + 16, y + 14, 56, 56, '#1f1e1b');
+    sprite('villager', rx + 44, y + 43, 46);
+    rr(rx + 16, y + 14, 56, 56, 6); ctx.lineWidth = 3; ctx.strokeStyle = PCOL[pi]; ctx.stroke();
+    const name = mode === 'ai' ? (pi === 0 ? 'You' : 'Computer') : C.NAMES[pi];
+    txt(name, rx + 86, y + 38, 22, TX, 'left');
+    txt('Hand ' + P.hand.length + '  \u00B7  Deck ' + P.deck.length, rx + 86, y + 62, 16, DIM, 'left');
+    if (active) { ctx.beginPath(); ctx.arc(rx + w - 20, y + 20, 6, 0, Math.PI * 2); ctx.fillStyle = GREEN; ctx.fill(); }
+  }
+
+  function drawRight(human) {
+    const g = G();
+    const rx = RP.x + 16, w = RP.w - 32;
+    playerBar(1, RP.y + 14);
+    playerBar(0, RP.y + RP.h - 14 - 56 - 12 - 84);
+    const placing = screen === 'place';
+    const text = placing ? 'Place your Villager (king) on a free square in your spawn zone.' : (msg && Date.now() - msgT < 8000 ? msg : '');
+    if (text) {
+      slot(rx, RP.y + 116, w, 120, '#2d2b28');
+      wrap(text, rx + 16, RP.y + 150, w - 32, 18, 24, TX);
     }
-    button(rx, 680, RP.w - 48, 56, 'End Turn', endTurn, { enabled: human && !pass && g.winner === null && !aiBusy, size: 28, col: '#2f6a58', hot: '#3b8a72', edge: '#4fb596' });
-    button(RP.x + RP.w - 104, 18, 90, 30, 'Menu', () => { confirmMenu = true; }, { size: 16 });
+    button(rx, RP.y + 256, w, 48, 'Menu', () => { confirmMenu = true; }, { size: 18 });
+    button(rx, RP.y + RP.h - 14 - 56, w, 56, 'End Turn', endTurn,
+      { enabled: !placing && human && !pass && g.winner === null && !aiBusy, size: 26, col: '#81b64c', hot: '#95c95d' });
   }
 
   function afterAction() {
@@ -546,16 +560,15 @@
       const y = c.y - (sl ? 10 : 0);
       const over = inRect(mouse.x, mouse.y, c.x, y, c.w, c.h);
       if (over) { hov = d; if (aff) hoverCostNext = d.cost; }
-      slot(c.x, y, c.w, c.h, over ? '#222845' : aff ? '#171b30' : '#0f111c');
-      if (sl) rect(c.x - 3, y - 3, c.w + 6, c.h + 6, null, ACC, 3);
+      slot(c.x, y, c.w, c.h, over ? '#4a4744' : aff ? '#3d3a37' : '#2d2b28');
+      if (sl) { rr(c.x - 2, y - 2, c.w + 4, c.h + 4, 8); ctx.lineWidth = 3; ctx.strokeStyle = GREEN; ctx.stroke(); }
       ctx.globalAlpha = aff ? 1 : 0.55;
       sprite(d.id, c.x + c.w / 2, y + 44, 58);
       ctx.globalAlpha = 1;
-      txt(d.name, c.x + c.w / 2, y + 92, 16, aff ? TX : '#6f7898', 'center');
+      txt(d.name, c.x + c.w / 2, y + 92, 16, aff ? TX : '#7d7b78', 'center');
       ctx.beginPath(); ctx.arc(c.x + 18, y + 18, 13, 0, Math.PI * 2);
-      ctx.fillStyle = aff ? '#2f64e0' : '#333a52'; ctx.fill();
-      ctx.lineWidth = 2; ctx.strokeStyle = aff ? '#8fc0ff' : '#4a526e'; ctx.stroke();
-      txt(String(d.cost), c.x + 18, y + 24, 17, '#fff', 'center');
+      ctx.fillStyle = aff ? '#e8a43a' : '#4a4744'; ctx.fill();
+      txt(String(d.cost), c.x + 18, y + 24, 17, aff ? '#2b1a00' : '#8a8885', 'center');
       btns.push({ x: c.x, y, w: c.w, h: c.h, enabled: true, fn: () => selectCard(c.i) });
     }
     if (hov) hoverNext = hov;
@@ -600,7 +613,7 @@
       rect(0, 0, W, H, 'rgba(6,6,12,0.97)');
       txt(pass.text, W / 2, 400, 52, '#fff', 'center');
       txt('Pass the device. The other player should look away.', W / 2, 450, 24, '#aaa', 'center');
-      button(600, 500, 400, 80, 'Ready', () => { const cb = pass.cb; pass = null; cb(); }, { size: 32, col: '#2f6a58', hot: '#3b8a72', edge: '#4fb596' });
+      button(600, 500, 400, 80, 'Ready', () => { const cb = pass.cb; pass = null; cb(); }, { size: 32, col: '#81b64c', hot: '#95c95d' });
       return;
     }
     if (g && g.winner !== null) {
@@ -617,7 +630,7 @@
     if (confirmMenu) {
       rect(0, 0, W, H, 'rgba(0,0,0,0.7)');
       txt('Leave the match?', W / 2, 380, 54, '#fff', 'center');
-      button(560, 430, 230, 70, 'Leave', toMenu, { size: 28, col: '#7a2f38', hot: '#a8424e', edge: '#d0606c' });
+      button(560, 430, 230, 70, 'Leave', toMenu, { size: 28, col: '#b83b32', hot: '#cf4b41' });
       button(810, 430, 230, 70, 'Keep playing', () => { confirmMenu = false; }, { size: 24 });
       return;
     }
