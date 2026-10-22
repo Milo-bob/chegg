@@ -1,0 +1,20 @@
+# CHEGG
+
+Browser remake of the Minecraft minigame **CHEGG** (Chess x Egg) by Gerg: a turn-based deck-building duel on a 10x8 checkerboard. Pure HTML/JS/canvas, no build step, no dependencies.
+
+- Play vs. computer or local 2-player (hot seat)
+- 17 minions + Villager king, rules and stats follow the public CHEGG ruleset
+- Sprites (spawn eggs, tiles) come from the Unity prototype in the parent folder
+
+## Files
+- `index.html` - canvas page
+- `js/data.js` - minion roster (cost, move/attack patterns, abilities)
+- `js/rules.js` - rules engine + computer opponent (no DOM, runs in Node too)
+- `js/game.js` - rendering, input, menus
+- `assets/` - egg sprites and tile textures
+
+## Controls
+Mouse/touch. Enter or Space = end turn, P = pause, Backspace = back/menu.
+
+## Embedding
+Sends `{type:'ready'}` on load and `{type:'gameOver', score}` (turn count) when a match ends.
