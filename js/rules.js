@@ -1,12 +1,12 @@
-/* CHEGG rules engine (no DOM). Board: 10 columns (x) x 8 rows (y).
-   Player 0 (Blue) sits on the left and attacks to the right, player 1 (Red) the other way round.
+/* CHEGG rules engine (no DOM). Board: 8 columns (x) x 10 rows (y).
+   Player 0 (Blue) sits at the bottom and attacks upwards, player 1 (Red) at the top attacks downwards.
    Patterns in data.js are [row, col] with row -1 = "forward"; see offs(). */
 const Chegg = (function () {
   const MIN = (typeof MINIONS !== 'undefined') ? MINIONS : require('./data.js').MINIONS;
   const DEF = {};
   MIN.forEach(d => { DEF[d.id] = d; });
 
-  const COLS = 10, ROWS = 8, MAX_MANA = 6, DECK_SIZE = 15, OPENING_HAND = 3;
+  const COLS = 8, ROWS = 10, MAX_MANA = 6, DECK_SIZE = 15, OPENING_HAND = 3;
   const NAMES = ['Blue', 'Red'];
   const LIMITS = { frog: 2, wither: 1 };
   const ATK = {
@@ -24,15 +24,15 @@ const Chegg = (function () {
   const at = (x, y) => (inb(x, y) ? G.board[y][x] : null);
   const dark = (x, y) => (x + y) % 2 === 1;
   const fwd = p => (p === 0 ? 1 : -1);
-  const zoneOf = p => (p === 0 ? [0, 1] : [COLS - 2, COLS - 1]);
-  const inZone = (p, x) => zoneOf(p).indexOf(x) >= 0;
+  const zoneOf = p => (p === 0 ? [ROWS - 2, ROWS - 1] : [0, 1]); // spawn rows
+  const inZone = (p, y) => zoneOf(p).indexOf(y) >= 0;
   const other = p => 1 - p;
 
   function offs(m, pattern) {
     const f = fwd(m.owner);
     const out = [];
     for (const [r, c] of pattern) {
-      const x = m.x + (-r) * f, y = m.y + c * f;
+      const x = m.x + c * f, y = m.y + r * f;
       if (inb(x, y)) out.push({ x, y });
     }
     return out;
@@ -106,7 +106,7 @@ const Chegg = (function () {
   }
 
   function placeVillager(pi, x, y) {
-    if (!inZone(pi, x) || at(x, y)) return false;
+    if (!inZone(pi, y) || at(x, y)) return false;
     const m = spawnMinion(pi, 'villager', x, y);
     m.sick = false;
     G.players[pi].villager = m;
@@ -347,7 +347,7 @@ const Chegg = (function () {
     const d = DEF[id];
     if (d.cost > P.mana) return [];
     const out = [];
-    for (const x of zoneOf(pi)) for (let y = 0; y < ROWS; y++) {
+    for (const y of zoneOf(pi)) for (let x = 0; x < COLS; x++) {
       if (at(x, y)) continue;
       if (id === 'phantom' && !dark(x, y)) continue;
       out.push({
@@ -426,7 +426,7 @@ const Chegg = (function () {
         for (const v of opt.victims) s += (v.owner === pi ? -1 : 1) * value(v) * 1.2;
       }
       // frontline bias: prefer squares facing the enemy
-      const adv = pi === 0 ? opt.click.x : COLS - 1 - opt.click.x;
+      const adv = pi === 0 ? ROWS - 1 - opt.click.y : opt.click.y;
       s += adv * 0.3 + Math.random() * 0.4;
       return s;
     }
