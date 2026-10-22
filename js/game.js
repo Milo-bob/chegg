@@ -45,7 +45,7 @@
   let aiBusy = false, aiToken = 0;
   let overSent = false;
   let ol = null;                  // online match state (see online section)
-  let queue = null, resumeRow = null;
+  let queue = null, resumeRow = null, botInfo = null;   // botInfo: a bot opponent dressed up as an online match
   // planning arrows (right-click drag, like chess.com) and square marks
   let arrows = [], marks = [], drag = null;
   // chess clock: timeCtl = seconds per player (0 = untimed)
@@ -295,7 +295,7 @@
 
   /* ---- deck builder ---- */
   function startDeckBuild(m) {
-    mode = m; buildFor = 0; screen = 'deck'; deckTab = 'classic'; deckScroll = 0;
+    mode = m; buildFor = 0; screen = 'deck'; deckTab = 'classic'; botInfo = null; deckScroll = 0;
     if (!total(deckCounts[0])) deckCounts[0] = C.randomDeck();
     deckCounts[1] = {};
   }
@@ -439,8 +439,8 @@
       const p = G().cur;
       pass = { text: 'Player ' + (p + 1) + ' (' + C.NAMES[p] + '): your turn', cb: () => {} };
     } else if (G().cur === 1) {
-      aiBusy = true; const tok = ++aiToken; say('Red is thinking...');
-      setTimeout(() => aiStep(tok, 0), 700);
+      aiBusy = true; const tok = ++aiToken; say(botInfo ? "Opponent's turn." : 'Red is thinking...');
+      setTimeout(() => aiStep(tok, 0), botInfo ? 1200 + Math.random() * 2200 : 700);
     } else say('Your turn.');
   }
   function aiStep(tok, n) {
@@ -450,7 +450,7 @@
     if (o) {
       arrows = []; marks = [];
       C.perform(o);
-      setTimeout(() => aiStep(tok, n + 1), 650);
+      setTimeout(() => aiStep(tok, n + 1), botInfo ? 800 + Math.random() * 900 : 650);
     } else {
       aiBusy = false;
       C.endTurn();
@@ -461,6 +461,7 @@
     aiToken++; aiBusy = false; screen = 'menu'; confirmMenu = false; paused = false; pass = null; sel = null; spawnCard = null;
     if (queue) { if (queue.stop) queue.stop(); queue = null; }
     if (ol) { Online.closeMatch(); ol = null; }
+    if (botInfo) { if (!botInfo.reported && G() && G().winner === null) reportBotResult(1, 'resign'); botInfo = null; }
     mode = 'ai'; clock.on = false;
     refreshResume();
   }
@@ -672,7 +673,7 @@
     slot(rx + 16, y + 14, 56, 56, '#1f1e1b');
     sprite('villager', rx + 44, y + 43, 46);
     rr(rx + 16, y + 14, 56, 56, 6); ctx.lineWidth = 3; ctx.strokeStyle = PCOL[pi]; ctx.stroke();
-    const name = mode === 'online' && ol ? (pi === ol.side ? 'You' : '') + (ol.names[pi] ? (pi === ol.side ? ' (' + ol.names[pi] + ')' : ol.names[pi]) : C.NAMES[pi]) : mode === 'ai' ? (pi === 0 ? 'You' : 'Computer') : C.NAMES[pi];
+    const name = mode === 'online' && ol ? (pi === ol.side ? 'You' : '') + (ol.names[pi] ? (pi === ol.side ? ' (' + ol.names[pi] + ')' : ol.names[pi]) : C.NAMES[pi]) : mode === 'ai' ? (botInfo ? (pi === 0 ? 'You' + (Online.profile ? ' (' + Online.profile.username + ')' : '') : botInfo.name) : (pi === 0 ? 'You' : 'Computer')) : C.NAMES[pi];
     txt(name, rx + 86, y + 38, 22, TX, 'left');
     txt('Hand ' + P.hand.length + '  \u00B7  Deck ' + P.deck.length, rx + 86, y + 62, 15, DIM, 'left');
     if (clock.on) {
@@ -708,7 +709,10 @@
     if (G().winner !== null) onWin();
   }
   function onWin() {
-    if (!overSent) { overSent = true; post({ type: 'gameOver', score: G().turnNo }); }
+    if (!overSent) {
+      overSent = true; post({ type: 'gameOver', score: G().turnNo });
+      if (mode === 'ai' && botInfo) { const w = G(); reportBotResult(w.winner, w.timeout ? 'timeout' : w.resigned ? 'resign' : 'villager'); }
+    }
   }
 
   // hand: a vertical column to the right of the board, mirroring the mana gauge
@@ -802,16 +806,19 @@
     if (g && g.winner !== null) {
       onWin();
       rect(0, 0, W, H, 'rgba(0,0,0,0.6)');
-      const human = mode === 'ai';
+      const human = mode === 'ai' && !botInfo;
       const online = mode === 'online' && ol;
-      const t = online ? (g.winner === ol.side ? 'You win!' : 'You lose') : human ? (g.winner === 0 ? 'You win!' : 'Computer wins') : C.NAMES[g.winner] + ' wins!';
-      txt(t, W / 2, 370, 100, (online ? g.winner === ol.side : g.winner === 0) ? '#8fb2ff' : '#ff8d86', 'center');
+      const botm = mode === 'ai' && !!botInfo;
+      const rated = online || botm;
+      const mineWon = online ? g.winner === ol.side : g.winner === 0;
+      const t = rated ? (mineWon ? 'You win!' : 'You lose') : human ? (g.winner === 0 ? 'You win!' : 'Computer wins') : C.NAMES[g.winner] + ' wins!';
+      txt(t, W / 2, 370, 100, (rated ? mineWon : g.winner === 0) ? '#8fb2ff' : '#ff8d86', 'center');
       txt(g.timeout ? 'Someone ran out of time.' : g.resigned ? 'A player resigned.' : 'The enemy Villager was eliminated.', W / 2, 420, 26, '#ddd', 'center');
-      if (online) {
-        const r = ol.row;
+      if (rated) {
+        const r = online ? ol.row : botInfo.row;
         if (r && r.status === 'finished') {
           const line = r.winner === null || r.winner === undefined ? 'Result disputed - no rating change.'
-            : 'Rating ' + (r.winner === ol.side ? '+' : '-') + (r.rating_delta || 0) + (Online.profile ? '  (now ' + Online.profile.rating + ')' : '');
+            : 'Rating ' + (mineWon ? '+' : '-') + (r.rating_delta || 0) + (Online.profile ? '  (now ' + Online.profile.rating + ')' : '');
           txt(line, W / 2, 462, 24, ACC, 'center');
         } else txt('Saving the result...', W / 2, 462, 20, DIM, 'center');
         button(685, 490, 230, 70, 'Menu', toMenu, { size: 28 });
@@ -824,8 +831,9 @@
     if (confirmMenu) {
       rect(0, 0, W, H, 'rgba(0,0,0,0.7)');
       const onl = mode === 'online' && ol && G().winner === null;
-      txt(onl ? 'Resign the match?' : 'Leave the match?', W / 2, 380, 54, '#fff', 'center');
-      button(560, 430, 230, 70, onl ? 'Resign' : 'Leave', onl ? resignOnline : toMenu, { size: 28, col: '#b83b32', hot: '#cf4b41' });
+      const rs = onl || (mode === 'ai' && !!botInfo && G().winner === null);
+      txt(rs ? 'Resign the match?' : 'Leave the match?', W / 2, 380, 54, '#fff', 'center');
+      button(560, 430, 230, 70, rs ? 'Resign' : 'Leave', onl ? resignOnline : toMenu, { size: 28, col: '#b83b32', hot: '#cf4b41' });
       button(810, 430, 230, 70, 'Keep playing', () => { confirmMenu = false; }, { size: 24 });
       return;
     }
@@ -945,7 +953,7 @@
       } else if (screen === 'queue') cancelQueue();
       else if (screen === 'deck' || screen === 'help') screen = 'menu';
     } else if (e.key === 'p' || e.key === 'P') {
-      if (screen === 'play' && !pass && mode !== 'online') paused = !paused;
+      if (screen === 'play' && !pass && mode !== 'online' && !botInfo) paused = !paused;
     } else if ((e.key === 'Enter' || e.key === ' ') && screen === 'play') {
       e.preventDefault();
       if (!pass && !confirmMenu && !paused && isHumanTurn() && !aiBusy && G().winner === null) endTurn();
@@ -1048,7 +1056,7 @@
   /* ---- matchmaking ---- */
   async function startSearch(kind, code) {
     saveDeck();
-    queue = { id: null, code: null, kind, stop: null };
+    queue = { id: null, code: null, kind, stop: null, t0: Date.now(), found: false, botCalled: false };
     screen = 'queue';
     const deck = deckCounts[0];
     const r = kind === 'code' ? await Online.joinCode(code, deck)
@@ -1057,26 +1065,54 @@
     if (!queue) return;                       // cancelled while waiting for the server
     if (!r.ok) { queue = null; screen = 'deck'; infoDialog('Could not start', r.error); return; }
     const row = r.data;
-    if (row.status === 'active') { enterMatch(row); return; }
+    if (row.status === 'active') { foundMatch(row); return; }
     queue.id = row.id; queue.code = row.code;
-    queue.stop = Online.waitForOpponent(row.id, enterMatch);
+    queue.stop = Online.waitForOpponent(row.id, foundMatch);
+  }
+  // a queue search always lasts at least 3 seconds, even if an opponent is ready right away
+  function foundMatch(row) {
+    if (!queue) { if (row.vs_bot) enterBotMatch(row); else enterMatch(row); return; }
+    if (queue.found) return;
+    queue.found = true;
+    if (queue.stop) { queue.stop(); queue.stop = null; }
+    const wait = queue.kind === 'queue' ? Math.max(0, 3000 - (Date.now() - queue.t0)) : 0;
+    const tok = queue;
+    setTimeout(() => { if (queue === tok) { if (row.vs_bot) enterBotMatch(row); else enterMatch(row); } }, wait);
+  }
+  // after 20 s without an opponent the player gets a bot; nothing in the UI says so
+  async function startBotFallback() {
+    const q = queue;
+    q.botCalled = true;
+    if (q.stop) { q.stop(); q.stop = null; }
+    const botDeck = C.randomDeck(C.MIN.some(d => d.extra && deckCounts[0][d.id]));
+    const r = await Online.startBot(q.id, botDeck);
+    if (queue !== q) return;
+    if (r.ok) { foundMatch(r.data); return; }
+    const am = await Online.activeMatch();      // somebody may have joined in the meantime
+    if (queue === q && am) { foundMatch(am); return; }
+    queue = null; screen = 'deck';
+    infoDialog('No opponent found', 'Please try again in a moment.');
   }
   function cancelQueue() {
+    if (queue && queue.found) return;
     if (queue) { if (queue.stop) queue.stop(); if (queue.id) Online.cancel(queue.id); }
     queue = null; screen = 'deck';
   }
   function drawQueue() {
     drawBackdrop(true);
+    if (queue && queue.kind === 'queue' && queue.id && !queue.found && !queue.botCalled && Date.now() - queue.t0 > 20000) startBotFallback();
     const dots = '.'.repeat(1 + Math.floor(Date.now() / 400) % 3);
-    txt('Looking for an opponent' + dots, W / 2, 300, 44, '#fff', 'center');
+    const found = !!(queue && queue.found);
+    txt(found ? 'Opponent found!' : 'Looking for an opponent' + dots, W / 2, 300, 44, found ? GREEN : '#fff', 'center');
     const tl = timeCtl ? timeCtl / 60 + ' min per player' : 'untimed';
     txt('Time control: ' + tl, W / 2, 346, 20, DIM, 'center');
+    if (queue && queue.kind === 'queue') txt(Math.floor((Date.now() - queue.t0) / 1000) + ' s  \u00B7  matching players of similar skill', W / 2, 384, 18, DIM, 'center');
     if (queue && queue.code) {
       txt('Invite code', W / 2, 430, 22, DIM, 'center');
       txt(queue.code, W / 2, 510, 84, ACC, 'center');
       txt('Send this code to your friend. They pick "Join code".', W / 2, 556, 20, DIM, 'center');
     }
-    button(650, 620, 300, 64, 'Cancel', cancelQueue, { size: 24 });
+    button(650, 620, 300, 64, 'Cancel', cancelQueue, { size: 24, enabled: !found });
   }
 
   /* ---- live match ---- */
@@ -1096,6 +1132,26 @@
       ol.names[0] = (res.profiles[row.p0] || {}).username || 'Blue';
       ol.names[1] = (res.profiles[row.p1] || {}).username || 'Red';
     }
+  }
+
+  async function enterBotMatch(row) {
+    queue = null;
+    const prof = await Online.profileOf(row.p1);
+    botInfo = { row, name: prof ? prof.username : 'Player', reported: false };
+    deckCounts[0] = row.deck0; deckCounts[1] = row.deck1;
+    mode = 'ai'; timeCtl = row.time_ctl;
+    beginMatch();
+    botInfo.row = row;
+  }
+  function reportBotResult(winner, why) {
+    if (!botInfo || botInfo.reported) return;
+    botInfo.reported = true;
+    const b = botInfo;
+    Online.report(b.row.id, winner, why).then(async () => {
+      const r = await Online.getMatch(b.row.id);
+      if (r) b.row = r;
+      Online.loadProfile();
+    });
   }
 
   function onOnlineMove(r) {

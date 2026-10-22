@@ -65,10 +65,11 @@ const Chegg = (function () {
     return a;
   }
 
-  function randomDeck(includeExtras) {
+  // allowed: optional {id: true} set restricting which extra minions may appear (unlocks)
+  function randomDeck(includeExtras, allowed) {
     const counts = {};
     let total = 0;
-    const ids = MIN.filter(d => d.id !== 'villager' && (includeExtras || !d.extra)).map(d => d.id);
+    const ids = MIN.filter(d => d.id !== 'villager' && (!d.extra || (includeExtras && (!allowed || allowed[d.id])))).map(d => d.id);
     let guard = 0;
     while (total < DECK_SIZE && guard++ < 1000) {
       const id = ids[Math.floor(Math.random() * ids.length)];
@@ -80,6 +81,17 @@ const Chegg = (function () {
       total++;
     }
     return counts;
+  }
+  // classic-only lobbies: every extra minion is swapped for a classic one of similar cost (deterministic)
+  const SWAP = { 1: 'zombie', 2: 'pufferfish', 3: 'skeleton', 4: 'slime', 5: 'parrot', 6: 'parrot' };
+  function classicOnly(counts) {
+    const out = {};
+    for (const id of Object.keys(counts)) {
+      if (!DEF[id]) continue;
+      const to = DEF[id].extra ? SWAP[DEF[id].cost] : id;
+      out[to] = (out[to] || 0) + counts[id];
+    }
+    return out;
   }
   function countsToList(counts) {
     const l = [];
@@ -208,6 +220,15 @@ const Chegg = (function () {
     log(NAMES[G.winner] + ' wins!');
   }
 
+  // sliding pieces (Ender Dragon) can't pass through other minions
+  function pathBlocked(m, sq) {
+    if (m.id !== 'enderdragon') return false;
+    const sx = Math.sign(sq.x - m.x), sy = Math.sign(sq.y - m.y);
+    for (let x = m.x + sx, y = m.y + sy; x !== sq.x || y !== sq.y; x += sx, y += sy) if (at(x, y)) return true;
+    return false;
+  }
+  const ownArmy = (pi, except) => { const l = []; forEachMinion(o => { if (o.owner === pi && o.id !== 'villager' && o !== except) l.push(o); }); return l; };
+
   function relocate(m, x, y) {
     G.board[m.y][m.x] = null;
     m.x = x; m.y = y;
@@ -223,6 +244,7 @@ const Chegg = (function () {
     if (P.mana < cost) return out;
     for (const sq of offs(m, m.def.movePattern)) {
       if (at(sq.x, sq.y)) continue;
+      if (pathBlocked(m, sq)) continue;
       if (m.id === 'phantom' && !dark(sq.x, sq.y)) continue;
       const midX = (m.x + sq.x) / 2, midY = (m.y + sq.y) / 2;
       const jump = m.id === 'rabbit' && Number.isInteger(midX) && Number.isInteger(midY) && !!at(midX, midY);
@@ -262,6 +284,7 @@ const Chegg = (function () {
       for (const sq of offs(m, sd.attackPattern)) {
         const t = at(sq.x, sq.y);
         if (!enemy(t)) continue;
+        if (pathBlocked(m, sq)) continue;
         if (darkOnly && !dark(sq.x, sq.y)) continue;
         if (sd.id === 'shulkerbox' && shulkerBlocked(m, sq)) continue;
         out.push({
@@ -405,8 +428,8 @@ const Chegg = (function () {
       if (id === 'phantom' && !dark(x, y)) continue;
       out.push({
         kind: 'spawn', cost: d.cost, click: { x, y }, card: ci, id,
-        affected: id === 'wither' ? around(x, y) : [],
-        victims: id === 'wither' ? around(x, y).map(s => at(s.x, s.y)).filter(Boolean) : []
+        affected: id === 'wither' ? around(x, y) : id === 'enderdragon' ? ownArmy(pi).map(o => ({ x: o.x, y: o.y })) : [],
+        victims: id === 'wither' ? around(x, y).map(s => at(s.x, s.y)).filter(Boolean) : id === 'enderdragon' ? ownArmy(pi) : []
       });
     }
     return out;
@@ -430,6 +453,13 @@ const Chegg = (function () {
       const opp = G.players[other(pi)];
       for (let i = 0; i < 2 && opp.deck.length; i++) P.hand.push(opp.deck.pop());
       log('Sniffer stole cards from the enemy deck.');
+    }
+    if (opt.id === 'enderdragon') {
+      addFx('flash', m.x, m.y);
+      G.aoe = true;
+      ownArmy(pi, m).forEach(o => kill(o));
+      G.aoe = false;
+      log('Ender Dragon devoured its own army.');
     }
     if (opt.id === 'wither') {
       addFx('flash', m.x, m.y);
@@ -589,7 +619,7 @@ const Chegg = (function () {
     DEF, MIN, COLS, ROWS, DECK_SIZE, NAMES, LIMITS, DIRS,
     get G() { return G; },
     newGame, applyAction, allOptions, optKey, placeVillager, startMatch, endTurn, perform, actionsFor, spawnOptions, hasSpecial,
-    randomDeck, zoneOf, dark, inb, at, minionsOf, aiNext, checkWin, countsToList
+    randomDeck, classicOnly, zoneOf, dark, inb, at, minionsOf, aiNext, checkWin, countsToList
   };
 })();
 

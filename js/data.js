@@ -4,6 +4,9 @@
 const CUBE_MOVES = [];
 [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].forEach(d => { for (let k = 1; k <= 6; k++) CUBE_MOVES.push([d[0] * k, d[1] * k]); });
 
+const QUEEN_MOVES = [];
+[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].forEach(d => { for (let k = 1; k <= 11; k++) QUEEN_MOVES.push([d[0] * k, d[1] * k]); });
+
 const MINIONS = [
   {
     id:"villager", name:"Villager", cost:0, costLabel:"Free", tier:"king",
@@ -345,11 +348,10 @@ const MINIONS = [
   {
     id:"enderdragon", name:"Ender Dragon", cost:6, tier:"offense", extra:true,
     img:"assets/minions/enderdragon.png",
-    move:"Any of the 8 surrounding squares, or 2 squares in any of the 8 directions.",
-    attack:"Dragon breath: any target up to 4 squares away in a straight lateral line, or up to 2 away on a diagonal.",
-    ability:"The final boss. Enormous reach for a hefty price.",
-    movePattern:[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1],[-2,0],[2,0],[0,-2],[0,2],[-2,-2],[-2,2],[2,-2],[2,2]],
-    attackPattern:[[-1,0],[-2,0],[-3,0],[-4,0],[1,0],[2,0],[3,0],[4,0],[0,-1],[0,-2],[0,-3],[0,-4],[0,1],[0,2],[0,3],[0,4],[-1,-1],[-2,-2],[-1,1],[-2,2],[1,-1],[2,-2],[1,1],[2,2]], copyLimit:"Deck limit: max 1 per deck"
+    move:"Moves like a chess queen: any distance in a straight lateral or diagonal line, but it can't pass through other minions.",
+    attack:"Destroys the first enemy along any lateral or diagonal line (it can't shoot through other minions). Costs 1 mana like any attack.",
+    ability:"The final boss. On spawn it devours your own army: every other minion you control is destroyed (your Villager king is safe). Max 1 per deck.",
+    movePattern:QUEEN_MOVES, attackPattern:QUEEN_MOVES, copyLimit:"Deck limit: max 1 per deck"
   }
 ];
 

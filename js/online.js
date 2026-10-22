@@ -92,20 +92,38 @@ const Online = (function () {
   const report = (id, winner, reason) => rpc('report_result', { p_match: id, p_winner: winner, p_reason: reason });
   const claimIdle = id => rpc('claim_idle_win', { p_match: id });
 
-  // wait until somebody joins our open game; cb(row) fires once it is active
+  // wait until somebody joins our open game (or we get paired by polling); cb(row) fires once it is active
   function waitForOpponent(id, cb) {
-    let done = false, timer = null;
+    let done = false, t1 = null, t2 = null, ch = null;
+    const stop = () => { clearInterval(t1); clearInterval(t2); if (ch) sb.removeChannel(ch); };
+    const finish = row => { if (done) return; done = true; stop(); cb(row); };
     const check = async () => {
       if (done) return;
       const { data } = await sb.from('matches').select('*').eq('id', id).maybeSingle();
-      if (data && data.status !== 'waiting') { done = true; stop(); cb(data); }
+      if (data && data.status === 'active') finish(data);
     };
-    const ch = sb.channel('wait:' + id)
+    // pairing with another waiting player only happens when somebody calls find_match / poll_match
+    const poll = async () => {
+      if (done) return;
+      const r = await rpc('poll_match', { p_id: id });
+      if (r.ok && r.data && r.data.status === 'active') finish(r.data);
+    };
+    ch = sb.channel('wait:' + id)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'matches', filter: 'id=eq.' + id }, check)
       .subscribe();
-    timer = setInterval(check, 3000);
-    function stop() { clearInterval(timer); sb.removeChannel(ch); }
+    t1 = setInterval(check, 3000);
+    t2 = setInterval(poll, 4000);
     return () => { done = true; stop(); };
+  }
+
+  const startBot = (id, deck) => rpc('start_bot_match', { p_id: id, p_bot_deck: deck });
+  async function profileOf(id) {
+    const { data } = await sb.from('profiles').select('id,username,rating,wins,losses').eq('id', id).maybeSingle();
+    return data;
+  }
+  async function getMatch(id) {
+    const { data } = await sb.from('matches').select('*').eq('id', id).maybeSingle();
+    return data;
   }
 
   /* ---------- live match ---------- */
@@ -184,14 +202,14 @@ const Online = (function () {
   async function activeMatch() {
     if (!session) return null;
     const uid = session.user.id;
-    const { data } = await sb.from('matches').select('*').eq('status', 'active').or('p0.eq.' + uid + ',p1.eq.' + uid)
+    const { data } = await sb.from('matches').select('*').eq('status', 'active').eq('vs_bot', false).or('p0.eq.' + uid + ',p1.eq.' + uid)
       .order('created_at', { ascending: false }).limit(1);
     return data && data[0] ? data[0] : null;
   }
 
   return {
     enabled, init, refresh, syncClock, signUp, signIn, guest, signOut, loadProfile,
-    findMatch, createPrivate, joinCode, cancel, report, claimIdle, waitForOpponent,
+    findMatch, createPrivate, joinCode, cancel, report, claimIdle, waitForOpponent, startBot, profileOf, getMatch,
     openMatch, send, closeMatch, leaderboard, activeMatch,
     onChange: f => listeners.push(f),
     get signedIn() { return !!session; },
