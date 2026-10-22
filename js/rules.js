@@ -243,7 +243,7 @@ const Chegg = (function () {
       const victims = aff.map(sq => at(sq.x, sq.y));
       const self = sd.id === 'creeper';
       out.push({
-        kind: 'attack', m, cost, button: true, label: (self ? 'Detonate' : 'Burst') + ' (' + cost + ')' + tag,
+        kind: 'attack', m, cost, badge: true, label: (self ? 'Detonate' : 'Burst') + ' (' + cost + ')' + tag,
         affected: aff.slice(), victims: self ? victims.concat([m]) : victims,
         run() {
           addFx('flash', m.x, m.y);
@@ -267,7 +267,8 @@ const Chegg = (function () {
         const victims = aff.map(s => at(s.x, s.y)).filter(Boolean);
         if (!victims.some(enemy)) continue;
         out.push({
-          kind: 'attack', m, cost, button: true,
+          kind: 'attack', m, cost,
+          clicks: aff.filter(s => enemy(at(s.x, s.y))),
           label: (sd.id === 'irongolem' ? 'Sweep ' : 'Fire ') + arrow + ' (' + cost + ')' + tag,
           affected: aff, victims,
           run() { addFx('flash', m.x + dx, m.y + dy); victims.forEach(v => kill(v, m)); }

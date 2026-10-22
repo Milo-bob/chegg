@@ -42,6 +42,11 @@
   let btns = [], prevBtns = [];
   let aiBusy = false, aiToken = 0;
   let overSent = false;
+  // planning arrows (right-click drag, like chess.com) and square marks
+  let arrows = [], marks = [], drag = null;
+  // chess clock: timeCtl = seconds per player (0 = untimed)
+  let timeCtl = 0;
+  const clock = { on: false, ms: [0, 0], last: 0 };
 
   try {
     const saved = JSON.parse(localStorage.getItem('chegg_deck_v1') || 'null');
@@ -238,6 +243,12 @@
     button(540, 440, 520, 72, 'Play vs Computer', () => startDeckBuild('ai'), { size: 28, col: '#81b64c', hot: '#95c95d' });
     button(540, 526, 520, 72, 'Local 2 Players', () => startDeckBuild('local'), { size: 28 });
     button(540, 612, 520, 72, 'How to Play', () => { screen = 'help'; }, { size: 28 });
+    txt('Time control', W / 2, 716, 16, DIM, 'center');
+    [[0, 'Untimed'], [180, '3 min'], [300, '5 min'], [600, '10 min']].forEach((t, i) => {
+      const on = timeCtl === t[0];
+      button(540 + i * 133, 728, 121, 44, t[1], () => { timeCtl = t[0]; },
+        { size: 18, col: on ? '#81b64c' : '#454441', hot: on ? '#95c95d' : '#55534f' });
+    });
     txt('Based on the Minecraft minigame CHEGG by Gerg', W / 2, 850, 16, DIM, 'center');
   }
 
@@ -248,7 +259,9 @@
     ['Mana', 'Turn 1 gives 1 mana, turn 2 gives 2 ... capped at 6. Mana refreshes each turn, unspent mana is lost. Each Cat on the board adds +1.'],
     ['Spending', 'Spawn a minion for its cost. Attacking costs 1 mana (Wither: 2), once per minion per turn. Every minion has 1 free move per turn; moving again ("dash") costs 1 mana. A minion cannot dash and attack in the same turn, and cannot move after attacking. The Villager always pays 1 mana to move.'],
     ['Timing', 'A freshly spawned minion sits out the turn it is placed (shown with zZ). Area attacks hurt your own minions too!'],
-    ['Controls', 'Click a card, then a highlighted square to spawn it. Click one of your minions: green squares are moves, red squares are attacks, area attacks and specials appear as buttons on the left. Enter or Space ends the turn, P pauses, Backspace goes back.']
+    ['Planning', 'Right-click and drag on the board to draw an arrow (Shift = green, Ctrl = red, Alt = blue). Right-click a square to mark it. A left-click clears everything.'],
+    ['Clock', 'Pick a time control in the main menu. Only your own turn uses your clock; run out of time and you lose.'],
+    ['Controls', 'Click a card, then a highlighted square to spawn it. Click one of your minions: dots are moves, red rings are attacks. Area attacks (Creeper, Puffer-Fish) use the red star badge on the piece, sweeps and shots (Iron Golem, Wither) are fired by clicking an enemy they would hit, and specials (Frog, Enderman) by clicking the target, or the purple badge if it clashes with an attack. Enter or Space ends the turn, P pauses, Backspace goes back.']
   ];
   function drawHelp() {
     drawBackdrop();
@@ -277,6 +290,7 @@
     txt(who + ' deck', 40, 66, 42, buildFor === 0 ? '#8fb2ff' : '#ff8d86', 'left');
     txt('Pick ' + C.DECK_SIZE + ' minions — ' + n + '/' + C.DECK_SIZE + '   (your Villager king is added for free)', 40, 98, 22, n === C.DECK_SIZE ? '#6dff8f' : '#ddd');
     const list = C.MIN.filter(d => d.id !== 'villager' && !!d.extra === (deckTab === 'extra'));
+    if (deckTab === 'classic') list.push(C.DEF.villager); // king: info card only, always in your deck
     const nExtra = C.MIN.filter(d => d.extra).length;
     button(560, 30, 170, 46, 'Classic', () => { deckTab = 'classic'; }, { size: 20, col: deckTab === 'classic' ? '#81b64c' : '#454441', hot: deckTab === 'classic' ? '#95c95d' : '#55534f' });
     button(744, 30, 190, 46, 'Extras (' + nExtra + ')', () => { deckTab = 'extra'; }, { size: 20, col: deckTab === 'extra' ? '#81b64c' : '#454441', hot: deckTab === 'extra' ? '#95c95d' : '#55534f' });
@@ -286,6 +300,16 @@
       const x = 40 + col * 163, y = 120 + row * 205, w = 153, h = 195;
       const over = inRect(mouse.x, mouse.y, x, y, w, h);
       if (over) hov = d;
+      if (d.id === 'villager') {
+        panel(x, y, w, h);
+        slot(x + w / 2 - 38, y + 14, 76, 76);
+        sprite(d.id, x + w / 2, y + 52, 62);
+        txt(d.name, x + w / 2, y + 116, 20, TX, 'center');
+        txt('Your king', x + w / 2, y + 138, 16, ACC, 'center');
+        txt('always in play', x + w / 2, y + 162, 15, DIM, 'center');
+        txt('free', x + w - 8, y + 24, 14, GREEN, 'right');
+        return;
+      }
       const cnt = counts[d.id] || 0;
       panel(x, y, w, h);
       if (cnt) { rr(x, y, w, h, 8); ctx.lineWidth = 3; ctx.strokeStyle = GREEN; ctx.stroke(); }
@@ -318,6 +342,7 @@
   /* ---- match flow ---- */
   function beginMatch() {
     C.newGame([deckCounts[0], deckCounts[1]]);
+    clock.on = false; arrows = []; marks = [];
     screen = 'place'; placeFor = 0; sel = null; spawnCard = null; overSent = false; aiBusy = false; aiToken++;
     confirmMenu = false; paused = false;
     say('Blue: place your Villager (king) in your spawn zone.');
@@ -342,13 +367,14 @@
   function startPlay() {
     screen = 'play';
     C.startMatch();
-    sel = null; spawnCard = null;
+    sel = null; spawnCard = null; arrows = []; marks = [];
+    clock.on = timeCtl > 0; clock.ms = [timeCtl * 1000, timeCtl * 1000]; clock.last = Date.now();
     say('Your turn. Click a card to spawn, or a minion to move or attack.');
     post({ type: 'ready' });
   }
   function endTurn() {
     if (G().winner !== null) return;
-    sel = null; spawnCard = null; selMode = 'normal';
+    sel = null; spawnCard = null; selMode = 'normal'; arrows = []; marks = [];
     C.endTurn();
     if (mode === 'local') {
       const p = G().cur;
@@ -363,6 +389,7 @@
     if (G().winner !== null) { aiBusy = false; return; }
     const o = n < 40 ? C.aiNext() : null;
     if (o) {
+      arrows = []; marks = [];
       C.perform(o);
       setTimeout(() => aiStep(tok, n + 1), 650);
     } else {
@@ -379,13 +406,76 @@
   function curOptions() {
     if (!isHumanTurn() || G().winner !== null || pass) return [];
     if (spawnCard !== null) return C.spawnOptions(G().cur, spawnCard);
-    if (sel && sel.alive) return C.actionsFor(sel, selMode);
+    if (sel && sel.alive) {
+      if (selMode === 'special') return C.actionsFor(sel, 'special');
+      const o = C.actionsFor(sel, 'normal');
+      if (C.hasSpecial(sel)) {
+        for (const q of C.actionsFor(sel, 'special')) if (!o.some(n => n.click && sameCell(n.click, q.click))) o.push(q);
+      }
+      return o;
+    }
     return [];
+  }
+  // best option for a clicked square (moves, targets, enemies inside a sweep ...)
+  function optAt(opts, cell) {
+    let best = null, bs = -1e9;
+    for (const q of opts) {
+      const hit = (q.click && sameCell(q.click, cell)) || (q.clicks && q.clicks.some(c => sameCell(c, cell)));
+      if (!hit) continue;
+      let sc = q.kind === 'attack' ? 10 : q.kind === 'special' ? 5 : 0;
+      if (q.victims) sc += q.victims.reduce((a, v) => a + (v.owner === q.m.owner ? -1.2 : 1), 0);
+      if (sc > bs) { bs = sc; best = q; }
+    }
+    return best;
+  }
+  // small badges on the selected piece: area attacks and the special-mode switch
+  function badgesFor(opts) {
+    const list = [];
+    if (!sel || !sel.alive || !isHumanTurn() || pass || G().winner !== null || spawnCard !== null) return list;
+    for (const o of opts) if (o.badge) list.push({ opt: o, color: '#c0392b', glyph: 'star' });
+    if (C.hasSpecial(sel)) {
+      const sp = C.actionsFor(sel, 'special');
+      const normal = selMode === 'normal' ? C.actionsFor(sel, 'normal') : [];
+      const conflict = sp.some(q => normal.some(n => n.click && sameCell(n.click, q.click)));
+      if (selMode === 'special' || conflict) list.push({ toggle: true, color: selMode === 'special' ? '#8366cc' : '#6b52b0', glyph: '\u2194' });
+    }
+    list.forEach((b, i) => { b.x = BX + sel.x * CELL + CELL - 28; b.y = BY + sel.y * CELL + 2 + i * 28; b.s = 26; });
+    return list;
   }
   function cellAt(px, py) {
     const x = Math.floor((px - BX) / CELL), y = Math.floor((py - BY) / CELL);
     return C.inb(x, y) && px >= BX && py >= BY ? { x, y } : null;
   }
+
+  const ctr = q => ({ x: BX + q.x * CELL + CELL / 2, y: BY + q.y * CELL + CELL / 2 });
+  function drawArrow(a, b, c) {
+    const A = ctr(a), B = ctr(b);
+    const dx = b.x - a.x, dy = b.y - a.y;
+    let pts = [A, B];
+    if (Math.abs(dx) === 1 && Math.abs(dy) === 2) pts = [A, ctr({ x: a.x, y: b.y }), B];
+    else if (Math.abs(dx) === 2 && Math.abs(dy) === 1) pts = [A, ctr({ x: b.x, y: a.y }), B];
+    const last = pts[pts.length - 2];
+    const ang = Math.atan2(B.y - last.y, B.x - last.x);
+    const head = CELL * 0.36;
+    const tail = { x: B.x - Math.cos(ang) * head * 0.8, y: B.y - Math.sin(ang) * head * 0.8 };
+    ctx.save();
+    ctx.globalAlpha = 0.82;
+    ctx.strokeStyle = 'rgb(' + c + ')'; ctx.fillStyle = 'rgb(' + c + ')';
+    ctx.lineWidth = CELL * 0.16; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length - 1; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.lineTo(tail.x, tail.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(B.x, B.y);
+    ctx.lineTo(B.x - Math.cos(ang - 0.5) * head, B.y - Math.sin(ang - 0.5) * head);
+    ctx.lineTo(B.x - Math.cos(ang + 0.5) * head, B.y - Math.sin(ang + 0.5) * head);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  const sameCell = (p, q) => p.x === q.x && p.y === q.y;
+  function arrowColor(e) { return e.shiftKey ? '129,182,76' : e.ctrlKey ? '224,60,50' : e.altKey ? '66,135,245' : '255,170,0'; }
 
   function drawPlay() {
     const g = G();
@@ -394,9 +484,13 @@
     const opts = placing ? [] : curOptions();
     const hc = cellAt(mouse.x, mouse.y);
     let preview = hoverBtnPreview;
+    const badges = placing ? [] : badgesFor(opts);
+    const hb = badges.find(b => inRect(mouse.x, mouse.y, b.x, b.y, b.s, b.s));
+    const inBadge = !!hb;
+    if (hb && hb.opt) { preview = hb.opt.affected; hoverCostNext = hb.opt.cost; }
     if (!preview && hc) {
-      const o = opts.find(q => q.click && q.click.x === hc.x && q.click.y === hc.y);
-      if (o) { preview = o.affected; hoverCostNext = o.cost; }
+      const o = optAt(opts, hc);
+      if (o && !inBadge) { preview = o.affected; hoverCostNext = o.cost; }
     }
     if (hc && C.at(hc.x, hc.y)) hoverNext = C.at(hc.x, hc.y).def;
     // board frame
@@ -415,25 +509,45 @@
     }
     // chess.com style hints: dots for free squares, rings for captures
     for (const o of opts) {
-      if (!o.click) continue;
-      const cx = BX + o.click.x * CELL + CELL / 2, cy = BY + o.click.y * CELL + CELL / 2;
-      const hit = !!C.at(o.click.x, o.click.y) && o.kind !== 'spawn';
-      ctx.beginPath();
-      if (hit) {
-        ctx.arc(cx, cy, CELL * 0.45, 0, Math.PI * 2); ctx.lineWidth = 6;
-        ctx.strokeStyle = o.kind === 'special' ? 'rgba(150,110,255,0.85)' : 'rgba(224,60,50,0.85)'; ctx.stroke();
-      } else {
-        ctx.arc(cx, cy, CELL * 0.17, 0, Math.PI * 2);
-        ctx.fillStyle = o.kind === 'special' ? 'rgba(150,110,255,0.85)' : 'rgba(10,10,10,0.42)'; ctx.fill();
+      const sq = o.clicks || (o.click ? [o.click] : []);
+      for (const c of sq) {
+        const cx = BX + c.x * CELL + CELL / 2, cy = BY + c.y * CELL + CELL / 2;
+        const hit = !!C.at(c.x, c.y) && o.kind !== 'spawn';
+        ctx.beginPath();
+        if (hit) {
+          ctx.arc(cx, cy, CELL * 0.45, 0, Math.PI * 2); ctx.lineWidth = 6;
+          ctx.strokeStyle = o.kind === 'special' ? 'rgba(150,110,255,0.85)' : 'rgba(224,60,50,0.85)'; ctx.stroke();
+        } else {
+          ctx.arc(cx, cy, CELL * 0.17, 0, Math.PI * 2);
+          ctx.fillStyle = o.kind === 'special' ? 'rgba(150,110,255,0.85)' : 'rgba(10,10,10,0.42)'; ctx.fill();
+        }
+        if (hc && sameCell(hc, c) && !inBadge) {
+          ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+          ctx.strokeRect(BX + hc.x * CELL + 2, BY + hc.y * CELL + 2, CELL - 4, CELL - 4);
+        }
       }
-      if (hc && hc.x === o.click.x && hc.y === o.click.y) {
-        ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-        ctx.strokeRect(BX + hc.x * CELL + 2, BY + hc.y * CELL + 2, CELL - 4, CELL - 4);
-      }
+    }
+    // badges (area attack / special switch) on the selected piece
+    for (const b of badges) {
+      rr(b.x, b.y, b.s, b.s, 6); ctx.fillStyle = b.color; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = (hb === b) ? '#fff' : 'rgba(0,0,0,0.5)'; ctx.stroke();
+      if (b.glyph === 'star') {
+        ctx.beginPath();
+        for (let i = 0; i < 16; i++) {
+          const a = i * Math.PI / 8, rad = i % 2 ? 5 : 10;
+          const px = b.x + 13 + Math.cos(a) * rad, py = b.y + 13 + Math.sin(a) * rad;
+          if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+        }
+        ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
+      } else txt(b.glyph, b.x + 13, b.y + 20, 18, '#fff', 'center');
     }
     for (const o of opts) {
       if (o.click && o.cost > 0 && o.kind !== 'spawn') txt(String(o.cost), BX + o.click.x * CELL + CELL - 6, BY + o.click.y * CELL + CELL - 6, 18, '#fff', 'right');
     }
+    // planning marks and arrows
+    for (const m of marks) rect(BX + m.x * CELL, BY + m.y * CELL, CELL, CELL, 'rgba(' + m.c + ',0.5)');
+    for (const a of arrows) drawArrow(a.a, a.b, a.c);
+    if (drag && hc && (hc.x !== drag.from.x || hc.y !== drag.from.y)) drawArrow(drag.from, hc, drag.c);
     // fx
     const now = Date.now();
     g.fx = g.fx.filter(f => now - f.t < 600);
@@ -452,7 +566,7 @@
   }
 
   const LP = { x: 20, y: 10, w: 360, h: 750 };
-  const RP = { x: 1260, y: 10, w: 320, h: 750 };
+  const RP = { x: 1226, y: 10, w: 354, h: 750 };
 
   function drawSidePanels(placing) {
     const g = G();
@@ -477,25 +591,6 @@
     if (!d && spawnCard !== null) d = C.DEF[P.hand[spawnCard]];
     if (d) drawInfo(d, lx, 84, LP.w - 48);
     else txt('Hover a card or minion for details', LP.x + LP.w / 2, 380, 20, DIM, 'center');
-    // action buttons for selected minion
-    if (human && sel && sel.alive && !pass && g.winner === null) {
-      const normal = C.actionsFor(sel, 'normal');
-      const bl = selMode === 'normal' ? normal.filter(o => o.button).slice(0, 4) : [];
-      const nb = bl.length + (C.hasSpecial(sel) ? 1 : 0);
-      let by = LP.y + LP.h - 18 - nb * 40;
-      if (selMode === 'normal') {
-        bl.forEach(o => {
-          button(lx, by, LP.w - 48, 34, o.label, () => { C.perform(o); afterAction(); }, { preview: o.affected, cost: o.cost, size: 18, col: '#b83b32', hot: '#cf4b41' });
-          by += 40;
-        });
-      }
-      if (C.hasSpecial(sel)) {
-        const sp = C.actionsFor(sel, 'special');
-        const label = selMode === 'special' ? 'Cancel special' : (sel.id === 'frog' ? 'Special: Pull (1)' : 'Special: Teleport (1)');
-        button(lx, by, LP.w - 48, 34, label, () => { selMode = selMode === 'special' ? 'normal' : 'special'; },
-          { enabled: selMode === 'special' || sp.length > 0, size: 18, col: '#6b52b0', hot: '#8366cc' });
-      }
-    }
     drawRight(human);
   }
 
@@ -510,8 +605,13 @@
     rr(rx + 16, y + 14, 56, 56, 6); ctx.lineWidth = 3; ctx.strokeStyle = PCOL[pi]; ctx.stroke();
     const name = mode === 'ai' ? (pi === 0 ? 'You' : 'Computer') : C.NAMES[pi];
     txt(name, rx + 86, y + 38, 22, TX, 'left');
-    txt('Hand ' + P.hand.length + '  \u00B7  Deck ' + P.deck.length, rx + 86, y + 62, 16, DIM, 'left');
-    if (active) { ctx.beginPath(); ctx.arc(rx + w - 20, y + 20, 6, 0, Math.PI * 2); ctx.fillStyle = GREEN; ctx.fill(); }
+    txt('Hand ' + P.hand.length + '  \u00B7  Deck ' + P.deck.length, rx + 86, y + 62, 15, DIM, 'left');
+    if (clock.on) {
+      const ms = clock.ms[pi];
+      rr(rx + w - 100, y + 20, 86, 44, 6);
+      ctx.fillStyle = active ? '#fff' : '#1f1e1b'; ctx.fill();
+      txt(fmtClock(ms), rx + w - 57, y + 51, 26, active ? (ms < 30000 ? '#c0392b' : '#262522') : (ms < 30000 ? '#e0584b' : DIM), 'center');
+    } else if (active) { ctx.beginPath(); ctx.arc(rx + w - 20, y + 20, 6, 0, Math.PI * 2); ctx.fillStyle = GREEN; ctx.fill(); }
   }
 
   function drawRight(human) {
@@ -531,6 +631,7 @@
   }
 
   function afterAction() {
+    arrows = []; marks = [];
     if (sel && !sel.alive) sel = null;
     selMode = 'normal';
     spawnCard = null;
@@ -598,13 +699,19 @@
     }
     if (!isHumanTurn() || pass || g.winner !== null) return;
     const opts = curOptions();
-    const o = opts.find(q => q.click && q.click.x === cell.x && q.click.y === cell.y);
+    const bd = badgesFor(opts).find(b => inRect(mouse.x, mouse.y, b.x, b.y, b.s, b.s));
+    if (bd) {
+      if (bd.opt) { C.perform(bd.opt); afterAction(); } else selMode = selMode === 'special' ? 'normal' : 'special';
+      return;
+    }
+    const o = optAt(opts, cell);
     if (o) { C.perform(o); afterAction(); return; }
     const m = C.at(cell.x, cell.y);
     if (m && m.owner === g.cur) {
       spawnCard = null; selMode = 'normal';
       sel = sel === m ? null : m;
       if (sel && m.sick) say('This minion was just spawned and cannot act until your next turn.');
+      else if (sel && badgesFor(curOptions()).length) say('Use the badge in the corner of the piece: red star = area attack, purple arrows = special ability.');
       return;
     }
     sel = null; spawnCard = null; selMode = 'normal';
@@ -626,7 +733,7 @@
       const human = mode === 'ai';
       const t = human ? (g.winner === 0 ? 'You win!' : 'Computer wins') : C.NAMES[g.winner] + ' wins!';
       txt(t, W / 2, 370, 100, g.winner === 0 ? '#8fb2ff' : '#ff8d86', 'center');
-      txt('The enemy Villager was eliminated.', W / 2, 420, 26, '#ddd', 'center');
+      txt(g.timeout ? 'The other player ran out of time.' : 'The enemy Villager was eliminated.', W / 2, 420, 26, '#ddd', 'center');
       button(560, 470, 230, 70, 'Rematch', () => beginMatch(), { size: 28 });
       button(810, 470, 230, 70, 'Menu', toMenu, { size: 28 });
       return;
@@ -646,7 +753,25 @@
   }
 
   /* ---------- loop & input ---------- */
+  function tickClock() {
+    const now = Date.now(), dt = now - clock.last;
+    clock.last = now;
+    if (!clock.on || screen !== 'play') return;
+    const g = G();
+    if (g.winner !== null || pass || paused || confirmMenu) return;
+    clock.ms[g.cur] -= dt;
+    if (clock.ms[g.cur] <= 0) {
+      clock.ms[g.cur] = 0;
+      g.loser = g.cur; g.winner = 1 - g.cur; g.timeout = true;
+    }
+  }
+  function fmtClock(ms) {
+    const t = Math.max(0, Math.ceil(ms / 1000));
+    return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
+  }
+
   function frame() {
+    tickClock();
     btns = [];
     hoverBtnPreview = null;
     hoverNext = null;
@@ -670,8 +795,30 @@
     return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
   }
   canvas.addEventListener('pointermove', e => { mouse = pos(e); });
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('pointerup', e => {
+    if (e.button !== 2 || !drag) return;
+    mouse = pos(e);
+    const cell = cellAt(mouse.x, mouse.y), d = drag;
+    drag = null;
+    if (!cell) return;
+    if (sameCell(cell, d.from)) {
+      const i = marks.findIndex(m => sameCell(m, cell));
+      if (i >= 0) marks.splice(i, 1); else marks.push({ x: cell.x, y: cell.y, c: d.c });
+    } else {
+      const i = arrows.findIndex(a => sameCell(a.a, d.from) && sameCell(a.b, cell));
+      if (i >= 0) arrows.splice(i, 1); else arrows.push({ a: d.from, b: cell, c: d.c });
+    }
+  });
   canvas.addEventListener('pointerdown', e => {
     mouse = pos(e);
+    if (e.button === 2) {
+      if ((screen === 'play') && !pass && !confirmMenu && !paused) {
+        const cell = cellAt(mouse.x, mouse.y);
+        if (cell) drag = { from: cell, c: arrowColor(e) };
+      }
+      return;
+    }
     if (pending > 0) return;
     for (let i = prevBtns.length - 1; i >= 0; i--) {
       const b = prevBtns[i];
@@ -679,10 +826,10 @@
     }
     if ((screen === 'play' || screen === 'place') && !pass && !confirmMenu && !paused) {
       const cell = cellAt(mouse.x, mouse.y);
-      if (cell) onBoardClick(cell);
+      if (cell) { arrows = []; marks = []; onBoardClick(cell); }
     }
   });
-  canvas.addEventListener('pointerleave', () => { mouse = { x: -1, y: -1 }; });
+  canvas.addEventListener('pointerleave', () => { mouse = { x: -1, y: -1 }; drag = null; });
   window.addEventListener('keydown', e => {
     if (e.key === 'Backspace') {
       e.preventDefault();
