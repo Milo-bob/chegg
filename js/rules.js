@@ -8,13 +8,14 @@ const Chegg = (function () {
 
   const COLS = 8, ROWS = 12, MAX_MANA = 6, DECK_SIZE = 15, OPENING_HAND = 3;
   const NAMES = ['Blue', 'Red'];
-  const LIMITS = { frog: 2, wither: 1, warden: 1, allay: 2, ghast: 1 };
+  const LIMITS = { frog: 2, wither: 1, warden: 1, allay: 2, ghast: 1, enderdragon: 1, sulfurcube: 2, wanderingtrader: 2 };
   const ATK = {
     villager: 'target', zombie: 'target', creeper: 'area', pufferfish: 'area', irongolem: 'dir',
     enderman: 'target', skeleton: 'target', blaze: 'target', phantom: 'target', slime: 'target',
     shulkerbox: 'target', wither: 'dir',
     wolf: 'target', bee: 'target', spider: 'target', snowgolem: 'target', horse: 'target', warden: 'target',
-    cavespider: 'target', bat: 'target', goat: 'target', camel: 'target', breeze: 'target', armadillo: 'target', bogged: 'target', ghast: 'target'
+    cavespider: 'target', bat: 'target', goat: 'target', camel: 'target', breeze: 'target', armadillo: 'target', bogged: 'target', ghast: 'target',
+    coppergolem: 'target', fox: 'target', zombievillager: 'target', evoker: 'target', enderdragon: 'target'
   };
   const LANDS = { villager: 1, slime: 1, shulkerbox: 1, horse: 1, goat: 1 }; // attacker moves onto the target square
   const DIRS = [[1, 0, '→'], [-1, 0, '←'], [0, -1, '↑'], [0, 1, '↓']];
@@ -148,6 +149,7 @@ const Chegg = (function () {
     G.turnNo++;
     P.maxMana = Math.min(MAX_MANA, P.turn) + catCount(G.cur);
     P.mana = P.maxMana;
+    if (P.frenzy) { P.mana += 2 * P.frenzy; log(NAMES[G.cur] + ' frenzy: +' + 2 * P.frenzy + ' mana.'); P.frenzy = 0; }
     if (!(G.cur === 0 && P.turn === 1)) draw(G.cur, 1);
     forEachMinion(m => {
       if (m.owner === G.cur) { m.sick = false; m.moved = 0; m.acted = false; m.dashed = false; }
@@ -164,6 +166,14 @@ const Chegg = (function () {
   /* ---------- removal & effects ---------- */
   function kill(m, by) {
     if (!m || !m.alive) return;
+    if (m.id === 'sulfurcube') return;                       // indestructible
+    if (m.id === 'coppergolem' && G.aoe) return;             // lightning rod: immune to area damage
+    if (m.id === 'evoker' && m.totem !== false) {            // Totem of Undying
+      m.totem = false;
+      addFx('flash', m.x, m.y);
+      log(NAMES[m.owner] + ' Evoker popped its Totem of Undying.');
+      return;
+    }
     if (m.id === 'armadillo' && m.shell !== false && by && by !== m) {
       m.shell = false;
       addFx('flash', m.x, m.y);
@@ -175,6 +185,14 @@ const Chegg = (function () {
     addFx('boom', m.x, m.y);
     log(NAMES[m.owner] + ' ' + m.def.name + ' was destroyed.');
     if (m.id === 'pig') draw(m.owner, 1);
+    if (m.id === 'zombifiedpiglin') {
+      const P = G.players[m.owner];
+      P.frenzy = (P.frenzy || 0) + 1;
+      log(NAMES[m.owner] + ' Zombified Piglin: frenzy! +2 mana next turn.');
+      if (G.cur === m.owner) {
+        forEachMinion(o => { if (o.owner === m.owner) { o.moved = 0; o.acted = false; o.dashed = false; } });
+      }
+    }
     if (m.id === 'sniffer') {
       const h = G.players[m.owner].hand;
       for (let i = 0; i < 2 && h.length; i++) h.splice(Math.floor(rng() * h.length), 1);
@@ -250,6 +268,11 @@ const Chegg = (function () {
           kind: 'attack', m, cost, click: sq, affected: [sq], victims: [t],
           run() {
             kill(t, m);
+            if (!t.alive && sd.id === 'fox') { draw(m.owner, 1); log('Fox stole a card.'); }
+            if (!t.alive && sd.id === 'zombievillager' && t.id !== 'villager' && !at(sq.x, sq.y)) {
+              spawnMinion(m.owner, 'zombie', sq.x, sq.y);
+              log('Zombie Villager infected a ' + t.def.name + ': a Zombie rises.');
+            }
             if (LANDS[sd.id] && !at(sq.x, sq.y)) relocate(m, sq.x, sq.y);
             if (sd.id === 'bee') kill(m, m);
           }
@@ -265,7 +288,7 @@ const Chegg = (function () {
         affected: aff.slice(), victims: self ? victims.concat([m]) : victims,
         run() {
           addFx('flash', m.x, m.y);
-          victims.forEach(v => kill(v, m));
+          G.aoe = true; victims.forEach(v => kill(v, m)); G.aoe = false;
           if (self) kill(m, m);
         }
       });
@@ -289,7 +312,7 @@ const Chegg = (function () {
           clicks: aff.filter(s => enemy(at(s.x, s.y))),
           label: (sd.id === 'irongolem' ? 'Sweep ' : 'Fire ') + arrow + ' (' + cost + ')' + tag,
           affected: aff, victims,
-          run() { addFx('flash', m.x + dx, m.y + dy); victims.forEach(v => kill(v, m)); }
+          run() { addFx('flash', m.x + dx, m.y + dy); G.aoe = true; victims.forEach(v => kill(v, m)); G.aoe = false; }
         });
       }
     }
@@ -335,6 +358,15 @@ const Chegg = (function () {
           run() { relocate(t, tx, ty); m.acted = true; log('Frog pulled a ' + t.def.name + '.'); }
         });
       }
+    } else if (m.id === 'witch') {
+      forEachMinion(t => {
+        if (t === m || t.owner !== m.owner || t.id === 'witch' || Math.max(Math.abs(t.x - m.x), Math.abs(t.y - m.y)) > 2) return;
+        if (!t.moved && !t.acted && !t.dashed) return;
+        out.push({
+          kind: 'special', m, cost: 1, click: { x: t.x, y: t.y }, affected: [{ x: t.x, y: t.y }],
+          run() { t.moved = 0; t.acted = false; t.dashed = false; t.sick = false; m.acted = true; log('Witch refreshed a ' + t.def.name + '.'); }
+        });
+      });
     } else if (m.id === 'enderman') {
       for (const t of lineTargets(m)) {
         if (t.id === 'villager') continue;
@@ -353,7 +385,7 @@ const Chegg = (function () {
     }
     return out;
   }
-  const hasSpecial = m => m.id === 'frog' || m.id === 'enderman';
+  const hasSpecial = m => m.id === 'frog' || m.id === 'enderman' || m.id === 'witch';
 
   function actionsFor(m, mode) {
     if (!m || !m.alive || m.sick || G.winner !== null) return [];
@@ -388,6 +420,11 @@ const Chegg = (function () {
     log(NAMES[pi] + ' spawned ' + m.def.name + '.');
     if (opt.id === 'pig') draw(pi, 1);
     if (opt.id === 'chicken') { P.mana += 1; log('Chicken laid an egg: 1 mana refunded.'); }
+    if (opt.id === 'wanderingtrader') {
+      draw(pi, 2);
+      if (P.hand.length) P.hand.splice(Math.floor(rng() * P.hand.length), 1);
+      log('Wandering Trader: traded cards.');
+    }
     if (opt.id === 'allay') { P.mana += 2; log('Allay: +2 mana.'); }
     if (opt.id === 'sniffer') {
       const opp = G.players[other(pi)];
@@ -396,7 +433,9 @@ const Chegg = (function () {
     }
     if (opt.id === 'wither') {
       addFx('flash', m.x, m.y);
+      G.aoe = true;
       around(m.x, m.y).forEach(s => kill(at(s.x, s.y)));
+      G.aoe = false;
     }
     checkWin();
     return m;

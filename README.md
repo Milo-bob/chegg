@@ -18,3 +18,6 @@ Mouse/touch. Enter or Space = end turn, P = pause, Backspace = back/menu.
 
 ## Embedding
 Sends `{type:'ready'}` on load and `{type:'gameOver', score}` (turn count) when a match ends.
+
+## Online
+Supabase accounts, matchmaking (queue or invite code), chess clock and leaderboard. Setup: see `../supabase/SETUP.md`; enter URL and anon key in `js/config.js`. `js/vendor/supabase.js` is supabase-js 2.45.4 (MIT).
