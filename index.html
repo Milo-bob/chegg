@@ -2,16 +2,29 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b10">
+<meta name="mobile-web-app-capable" content="yes">
 <title>CHEGG</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #0b0b10; overflow: hidden; }
+  html, body { margin: 0; height: 100%; background: #0b0b10; overflow: hidden; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  @supports (height: 100dvh) { html, body { height: 100dvh; } }
   body { display: flex; align-items: center; justify-content: center; }
   canvas {
     width: min(100vw, calc(100vh * 16 / 9));
     height: min(100vh, calc(100vw * 9 / 16));
+    -webkit-user-select: none; user-select: none;
     image-rendering: pixelated; touch-action: none; display: block; background: #15151c;
   }
+  @supports (height: 100dvh) { canvas { width: min(100vw, calc(100dvh * 16 / 9)); height: min(100dvh, calc(100vw * 9 / 16)); } }
+  /* phones held upright: the board needs a wide screen */
+  #rot { position: fixed; inset: 0; z-index: 20; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #0b0b10; color: #f1f0ee; text-align: center; padding: 24px; font-family: "Noto Sans", "Segoe UI", Arial, sans-serif; }
+  #rot .ico { font-size: 64px; animation: tilt 2.4s ease-in-out infinite; }
+  #rot h2 { margin: 0; font-size: 22px; }
+  #rot p { margin: 0; color: #c3c2c1; max-width: 300px; line-height: 1.4; }
+  #rot button { margin-top: 8px; padding: 12px 22px; border: 0; border-bottom: 4px solid #2b2a28; border-radius: 8px; background: #454441; color: #fff; font-size: 16px; font-weight: 600; }
+  @keyframes tilt { 0%, 15% { transform: rotate(0); } 55%, 85% { transform: rotate(-90deg); } 100% { transform: rotate(0); } }
+  @media (orientation: portrait) and (pointer: coarse) { #rot:not(.skip) { display: flex; } }
   #dlg { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.65); font-family: "Noto Sans", "Segoe UI", Arial, sans-serif; z-index: 10; }
   #dlg.on { display: flex; }
   #dlg .card { background: #262522; color: #f1f0ee; border-radius: 10px; padding: 26px 28px; width: min(400px, 92vw); box-shadow: 0 12px 40px rgba(0,0,0,.5); max-height: 90vh; overflow: auto; }
@@ -34,6 +47,7 @@
 </style>
 </head>
 <body>
+<div id="rot"><div class="ico">📱</div><h2>Turn your phone sideways</h2><p>Chegg plays best in landscape, so the whole board fits on the screen.</p><button type="button" onclick="document.getElementById('rot').classList.add('skip')">Play anyway</button></div>
 <canvas id="c" width="1600" height="900"></canvas>
 <div id="dlg"></div>
 <script src="js/data.js"></script>

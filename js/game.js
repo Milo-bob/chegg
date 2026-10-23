@@ -1001,7 +1001,8 @@
       if (cell) { arrows = []; marks = []; onBoardClick(cell); }
     }
   });
-  canvas.addEventListener('pointerleave', () => { mouse = { x: -1, y: -1 }; drag = null; });
+  // a finger lifting fires pointerleave: keep the last touched square so its info stays visible
+  canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; mouse = { x: -1, y: -1 }; drag = null; });
   window.addEventListener('keydown', e => {
     if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
     if (e.key === 'Backspace') {
