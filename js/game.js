@@ -2,9 +2,26 @@
 (function () {
   'use strict';
   const C = Chegg;
-  const W = 1600, H = 900, COLS = C.COLS, ROWS = C.ROWS, CELL = 72, BX = 444, BY = 18;
+  const COLS = C.COLS, ROWS = C.ROWS;
+  // landscape: 1600x900 canvas; portrait (phone held upright): 900x1600 canvas with its own layout
+  let W = 1600, H = 900, CELL = 72, BX = 444, BY = 18, portrait = false;
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
+  let lastVw = 0, lastVh = 0;
+  function layout() {
+    lastVw = window.innerWidth; lastVh = window.innerHeight;
+    const p = lastVh > lastVw;
+    if (p !== portrait || canvas.width !== (p ? 900 : 1600)) {
+      portrait = p;
+      W = p ? 900 : 1600; H = p ? 1600 : 900;
+      canvas.width = W; canvas.height = H;
+      if (p) { CELL = 100; BX = 50; BY = 72; } else { CELL = 72; BX = 444; BY = 18; }
+      infoOpen = false;
+    }
+    const k = Math.min(lastVw / W, lastVh / H);
+    canvas.style.width = Math.floor(W * k) + 'px';
+    canvas.style.height = Math.floor(H * k) + 'px';
+  }
   const PCOL = ['#3f7ae8', '#e04a42'];
   const PCOL_D = ['#1b3b8a', '#8a1f1b'];
   const FONT = '"Noto Sans", "Segoe UI", "Helvetica Neue", Arial, sans-serif';
@@ -33,6 +50,8 @@
   let deckTab = 'classic';        // classic | extra
   let deckScroll = 0, sbDrag = null, sbGeom = null;
   const DECK_VIEW = { y: 112, h: 676 };
+  let infoOpen = false, infoDef = null, curInfo = null;   // portrait: full-size minion info overlay
+  let touchDrag = null;
   let placeFor = 0;
   let pass = null;                // {text, cb} hotseat hand-over overlay
   let confirmMenu = false, paused = false;
@@ -268,7 +287,7 @@
     if (!tiled) return;
     // main menu: the board's checker pattern, darkened and flattened so it stays calm
     const dk = img.basalt, lt = img.calcite;
-    for (let x = 0; x < 20; x++) for (let y = 0; y < 12; y++) {
+    for (let x = 0; x < Math.ceil(W / 80); x++) for (let y = 0; y < Math.ceil(H / 80); y++) {
       const i = (x + y) % 2 ? dk : lt;
       if (i && i.complete && i.naturalWidth) ctx.drawImage(i, x * 80, y * 80, 80, 80);
     }
@@ -277,25 +296,28 @@
 
   function drawMenu() {
     drawBackdrop(true);
+    const P = portrait, oy = P ? 150 : 0;
     const ids = ['creeper', 'zombie', 'enderman', 'villager', 'wither', 'pig', 'cat'];
     ids.forEach((id, i) => {
-      const cx = 470 + i * 110, cy = 300 + Math.sin(Date.now() / 600 + i) * 8;
-      ctx.beginPath(); ctx.ellipse(cx, 352, 30, 7, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
+      const cx = (W - 660) / 2 + i * 110, cy = 300 + oy + Math.sin(Date.now() / 600 + i) * 8;
+      ctx.beginPath(); ctx.ellipse(cx, 352 + oy, 30, 7, 0, 0, Math.PI * 2); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
       sprite(id, cx, cy, 84);
     });
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#fff'; ctx.font = '800 130px ' + FONT; ctx.fillText('Chegg', W / 2, 205);
-    ctx.fillStyle = GREEN; ctx.fillRect(W / 2 - 60, 226, 120, 6);
-    txt('Chess × Egg — the deck-building duel', W / 2, 400, 28, ACC, 'center');
-    button(540, 424, 520, 66, 'Play vs Computer', () => startDeckBuild('ai'), { size: 26, col: '#81b64c', hot: '#95c95d' });
-    button(540, 500, 520, 66, 'Play Online', openOnline, { size: 26 });
-    button(540, 576, 520, 66, 'Local 2 Players', () => startDeckBuild('local'), { size: 26 });
-    button(540, 652, 520, 66, 'How to Play', () => { screen = 'help'; }, { size: 26 });
-    txt('Time control', W / 2, 752, 16, DIM, 'center');
+    ctx.fillStyle = '#fff'; ctx.font = '800 130px ' + FONT; ctx.fillText('Chegg', W / 2, 205 + oy);
+    ctx.fillStyle = GREEN; ctx.fillRect(W / 2 - 60, 226 + oy, 120, 6);
+    txt('Chess × Egg — the deck-building duel', W / 2, 400 + oy, P ? 30 : 28, ACC, 'center');
+    const bw = P ? 660 : 520, bh = P ? 84 : 66, step = P ? 100 : 76, bx = (W - bw) / 2, by = 424 + oy;
+    button(bx, by, bw, bh, 'Play vs Computer', () => startDeckBuild('ai'), { size: 28, col: '#81b64c', hot: '#95c95d' });
+    button(bx, by + step, bw, bh, 'Play Online', openOnline, { size: 28 });
+    button(bx, by + 2 * step, bw, bh, 'Local 2 Players', () => startDeckBuild('local'), { size: 28 });
+    button(bx, by + 3 * step, bw, bh, 'How to Play', () => { screen = 'help'; helpScroll = 0; }, { size: 28 });
+    const ty = by + 3 * step + bh + 34, tw = P ? 156 : 121, tg = P ? 12 : 12, tx0 = (W - (4 * tw + 3 * tg)) / 2;
+    txt('Time control', W / 2, ty, P ? 24 : 16, DIM, 'center');
     [[0, 'Untimed'], [180, '3 min'], [300, '5 min'], [600, '10 min']].forEach((t, i) => {
       const on = timeCtl === t[0];
-      button(540 + i * 133, 764, 121, 44, t[1], () => { timeCtl = t[0]; },
-        { size: 18, col: on ? '#81b64c' : '#454441', hot: on ? '#95c95d' : '#55534f' });
+      button(tx0 + i * (tw + tg), ty + 12, tw, P ? 64 : 44, t[1], () => { timeCtl = t[0]; },
+        { size: P ? 24 : 18, col: on ? '#81b64c' : '#454441', hot: on ? '#95c95d' : '#55534f' });
     });
     drawAccountChip();
     {
@@ -303,9 +325,9 @@
       txt('Level ' + myLevel(), 40, 52, 28, '#fff', 'left');
       rect(40, 64, 220, 10, '#1f1e1b');
       rect(40, 64, full || UNLOCK_ALL ? 220 : 220 * L.into / L.need, 10, GREEN);
-      txt(UNLOCK_ALL ? 'All extras unlocked (test mode)' : full ? 'All extra cards unlocked' : L.into + ' / ' + L.need + ' XP  \u00B7  next: ' + UNLOCK_ORDER[L.level].name, 40, 96, 15, DIM, 'left');
+      txt(UNLOCK_ALL ? 'All extras unlocked (test mode)' : full ? 'All extra cards unlocked' : L.into + ' / ' + L.need + ' XP  ·  next: ' + UNLOCK_ORDER[L.level].name, 40, 96, 15, DIM, 'left');
     }
-    txt('Based on the Minecraft minigame CHEGG by Gerg', W / 2, 850, 16, DIM, 'center');
+    txt('Based on the Minecraft minigame CHEGG by Gerg', W / 2, H - 50, P ? 20 : 16, DIM, 'center');
   }
 
   const HELP = [
@@ -319,8 +341,26 @@
     ['Clock', 'Pick a time control in the main menu. Only your own turn uses your clock; run out of time and you lose.'],
     ['Controls', 'Click a card, then a highlighted square to spawn it. Click one of your minions: dots are moves, red rings are attacks. Area attacks (Creeper, Puffer-Fish) use the red star badge on the piece, sweeps and shots (Iron Golem, Wither) are fired by clicking an enemy they would hit, and specials (Frog, Enderman) by clicking the target, or the purple badge if it clashes with an attack. Enter or Space ends the turn, P pauses, Backspace goes back.']
   ];
+  let helpScroll = 0;
   function drawHelp() {
     drawBackdrop();
+    if (portrait) {
+      panel(20, 20, 860, 1460);
+      txt('How to Play', W / 2, 90, 50, '#fff', 'center');
+      ctx.save();
+      ctx.beginPath(); ctx.rect(20, 110, 860, 1360); ctx.clip();
+      let y = 150 - helpScroll;
+      for (const [h, b] of HELP) {
+        txt(h, 50, y, 26, ACC, 'left');
+        y = wrap(b, 50, y + 34, 800, 23, 29, TX) + 16;
+      }
+      ctx.restore();
+      const maxS = Math.max(0, y + helpScroll - 1460);
+      helpScroll = Math.max(0, Math.min(maxS, helpScroll));
+      helpMax = maxS;
+      button(300, 1500, 300, 80, 'Back', () => { screen = 'menu'; }, { size: 28 });
+      return;
+    }
     panel(150, 30, 1300, 750);
     txt('How to Play', W / 2, 95, 50, '#fff', 'center');
     let y = 150;
@@ -331,6 +371,7 @@
     }
     button(650, 810, 300, 60, 'Back', () => { screen = 'menu'; });
   }
+  let helpMax = 0;
 
   /* ---- deck builder ---- */
   function startDeckBuild(m) {
@@ -341,29 +382,36 @@
   }
   function drawDeck() {
     drawBackdrop();
+    const P = portrait;
     const counts = deckCounts[buildFor];
     const n = total(counts);
     const who = mode === 'local' ? 'Player ' + (buildFor + 1) + ' (' + C.NAMES[buildFor] + ')' : 'Your';
-    txt(who + ' deck', 40, 66, 42, buildFor === 0 ? '#8fb2ff' : '#ff8d86', 'left');
-    txt('Pick ' + C.DECK_SIZE + ' minions — ' + n + '/' + C.DECK_SIZE + '   (your Villager king is added for free)', 40, 98, 22, n === C.DECK_SIZE ? '#6dff8f' : '#ddd');
+    const NC = P ? 4 : 6, CW = P ? 205 : 153, X0 = P ? 25 : 40;
+    if (P) Object.assign(DECK_VIEW, { y: 196, h: 1214 }); else Object.assign(DECK_VIEW, { y: 112, h: 676 });
+    txt(who + ' deck', 40, P ? 62 : 66, P ? 40 : 42, buildFor === 0 ? '#8fb2ff' : '#ff8d86', 'left');
+    txt(P ? n + '/' + C.DECK_SIZE + ' picked  ·  tap a card for details' : 'Pick ' + C.DECK_SIZE + ' minions — ' + n + '/' + C.DECK_SIZE + '   (your Villager king is added for free)',
+      40, P ? 102 : 98, P ? 24 : 22, n === C.DECK_SIZE ? '#6dff8f' : '#ddd');
     const list = C.MIN.filter(d => d.id !== 'villager' && !!d.extra === (deckTab === 'extra'));
     if (deckTab === 'classic') list.push(C.DEF.villager); // king: info card only, always in your deck
     const nExtra = C.MIN.filter(d => d.extra && isUnlocked(d.id)).length + '/' + UNLOCK_ORDER.length;
-    button(560, 30, 170, 46, 'Classic', () => { deckTab = 'classic'; deckScroll = 0; }, { size: 20, col: deckTab === 'classic' ? '#81b64c' : '#454441', hot: deckTab === 'classic' ? '#95c95d' : '#55534f' });
-    button(744, 30, 190, 46, 'Extras ' + nExtra, () => { deckTab = 'extra'; deckScroll = 0; }, { size: 20, col: deckTab === 'extra' ? '#81b64c' : '#454441', hot: deckTab === 'extra' ? '#95c95d' : '#55534f' });
+    const tabY = P ? 126 : 30, tabH = P ? 56 : 46;
+    button(P ? 40 : 560, tabY, P ? 230 : 170, tabH, 'Classic', () => { deckTab = 'classic'; deckScroll = 0; }, { size: P ? 24 : 20, col: deckTab === 'classic' ? '#81b64c' : '#454441', hot: deckTab === 'classic' ? '#95c95d' : '#55534f' });
+    button(P ? 284 : 744, tabY, P ? 250 : 190, tabH, 'Extras ' + nExtra, () => { deckTab = 'extra'; deckScroll = 0; }, { size: P ? 24 : 20, col: deckTab === 'extra' ? '#81b64c' : '#454441', hot: deckTab === 'extra' ? '#95c95d' : '#55534f' });
     let hov = null;
-    const contentH = Math.ceil(list.length / 6) * 205 + 8;
+    const contentH = Math.ceil(list.length / NC) * 205 + 8;
     const maxScroll = Math.max(0, contentH - DECK_VIEW.h);
     deckScroll = Math.max(0, Math.min(maxScroll, deckScroll));
     ctx.save();
-    ctx.beginPath(); ctx.rect(30, DECK_VIEW.y, 980, DECK_VIEW.h); ctx.clip();
+    ctx.beginPath(); ctx.rect(P ? 0 : 30, DECK_VIEW.y, P ? 884 : 980, DECK_VIEW.h); ctx.clip();
     list.forEach((d, i) => {
-      const col = i % 6, row = Math.floor(i / 6);
-      const x = 40 + col * 163, y = 120 + row * 205 - deckScroll, w = 153, h = 195;
+      const col = i % NC, row = Math.floor(i / NC);
+      const x = X0 + col * (CW + 10), y = DECK_VIEW.y + 8 + row * 205 - deckScroll, w = CW, h = 195;
       if (y + h < DECK_VIEW.y || y > DECK_VIEW.y + DECK_VIEW.h) return;
       const nb = btns.length;
       const over = inRect(mouse.x, mouse.y, x, y, w, h) && mouse.y >= DECK_VIEW.y && mouse.y <= DECK_VIEW.y + DECK_VIEW.h;
-      if (over) hov = d;
+      if (over && !P) hov = d;
+      // portrait: a tap on the card body opens the info overlay (the +/- buttons are added later and win)
+      if (P && y >= DECK_VIEW.y && y + h <= DECK_VIEW.y + DECK_VIEW.h) btns.push({ x, y, w, h, enabled: true, fn: () => { infoDef = d; infoOpen = true; } });
       if (d.id === 'villager') {
         panel(x, y, w, h);
         slot(x + w / 2 - 38, y + 14, 76, 76);
@@ -382,7 +430,6 @@
         txt(d.name, x + w / 2, y + 116, 20, DIM, 'center');
         txt('Cost ' + d.cost, x + w / 2, y + 136, 16, DIM, 'center');
         txt('Unlocks at level ' + unlockLevelOf(d.id), x + w / 2, y + 170, 16, '#ff7f75', 'center');
-        if (over) hov = d;
         return;
       }
       const cnt = counts[d.id] || 0;
@@ -405,7 +452,7 @@
     });
     ctx.restore();
     if (maxScroll > 0) {
-      const tx = 1013, tw = 10;
+      const tx = P ? 886 : 1013, tw = 10;
       rr(tx, DECK_VIEW.y, tw, DECK_VIEW.h, 5); ctx.fillStyle = '#262522'; ctx.fill();
       const th = Math.max(60, DECK_VIEW.h * DECK_VIEW.h / contentH);
       const ty = DECK_VIEW.y + (DECK_VIEW.h - th) * (deckScroll / maxScroll);
@@ -414,26 +461,44 @@
       sbGeom = { tx, tw, ty, th, maxScroll };
     } else sbGeom = null;
     hoverNext = hov;
-    panel(1030, 110, 550, 660);
-    if (hov) drawInfo(hov, 1058, 135, 500);
-    else txt('Hover a minion for details', 1305, 440, 22, DIM, 'center');
+    if (!P) {
+      panel(1030, 110, 550, 660);
+      if (hov) drawInfo(hov, 1058, 135, 500);
+      else txt('Hover a minion for details', 1305, 440, 22, DIM, 'center');
+    }
+    const ok = n === C.DECK_SIZE;
+    const last = mode === 'ai' || buildFor === 1;
+    if (P) {
+      const ry = 1428, rh = 70;
+      const bw = mode === 'online' ? 160 : 270, gp = mode === 'online' ? 10 : 15, fx = i => 30 + i * (bw + gp);
+      button(fx(0), ry, bw, rh, 'Back', () => { screen = 'menu'; }, { size: 24 });
+      button(fx(1), ry, bw, rh, 'Random', () => { deckCounts[buildFor] = C.randomDeck(deckTab === 'extra', unlockedSet()); }, { size: 24 });
+      button(fx(2), ry, bw, rh, 'Clear', () => { deckCounts[buildFor] = {}; }, { size: 24 });
+      if (mode === 'online') {
+        button(fx(3), ry, bw, rh, 'Private', () => askPrivate(), { enabled: ok, size: 24 });
+        button(fx(4), ry, bw, rh, 'Join code', () => askCode(), { enabled: ok, size: 24 });
+        button(30, ry + rh + 12, 840, 76, 'Find Match', () => startSearch('queue'), { enabled: ok, size: 30, col: '#81b64c', hot: '#95c95d' });
+      } else {
+        button(30, ry + rh + 12, 840, 76, last ? 'Start Match' : 'Next: Player 2 deck', startFromDeck, { enabled: ok, size: 30, col: '#81b64c', hot: '#95c95d' });
+      }
+      return;
+    }
     button(40, 800, 200, 60, 'Back', () => { screen = 'menu'; });
     button(260, 800, 220, 60, 'Random', () => { deckCounts[buildFor] = C.randomDeck(deckTab === 'extra', unlockedSet()); });
     button(500, 800, 220, 60, 'Clear', () => { deckCounts[buildFor] = {}; });
     if (mode === 'online') {
-      const ok = n === C.DECK_SIZE;
       button(740, 800, 190, 60, 'Private game', () => askPrivate(), { enabled: ok, size: 20 });
       button(942, 800, 170, 60, 'Join code', () => askCode(), { enabled: ok, size: 20 });
       button(1130, 800, 450, 60, 'Find Match', () => startSearch('queue'), { enabled: ok, size: 26, col: '#81b64c', hot: '#95c95d' });
       return;
     }
-    const last = mode === 'ai' || buildFor === 1;
-    button(1130, 800, 450, 60, last ? 'Start Match' : 'Next: Player 2 deck', () => {
-      if (buildFor === 0) saveDeck();
-      if (mode === 'ai') { deckCounts[1] = C.randomDeck(C.MIN.some(d => d.extra && deckCounts[0][d.id])); beginMatch(); }
-      else if (buildFor === 0) { buildFor = 1; }
-      else beginMatch();
-    }, { enabled: n === C.DECK_SIZE, size: 26, col: '#81b64c', hot: '#95c95d' });
+    button(1130, 800, 450, 60, last ? 'Start Match' : 'Next: Player 2 deck', startFromDeck, { enabled: ok, size: 26, col: '#81b64c', hot: '#95c95d' });
+  }
+  function startFromDeck() {
+    if (buildFor === 0) saveDeck();
+    if (mode === 'ai') { deckCounts[1] = C.randomDeck(C.MIN.some(d => d.extra && deckCounts[0][d.id])); beginMatch(); }
+    else if (buildFor === 0) { buildFor = 1; }
+    else beginMatch();
   }
 
   /* ---- match flow ---- */
@@ -554,7 +619,8 @@
       const conflict = sp.some(q => normal.some(n => n.click && sameCell(n.click, q.click)));
       if (selMode === 'special' || conflict) list.push({ toggle: true, color: selMode === 'special' ? '#8366cc' : '#6b52b0', glyph: '\u2194' });
     }
-    list.forEach((b, i) => { b.x = vx(sel.x) + CELL - 28; b.y = vy(sel.y) + 2 + i * 28; b.s = 26; });
+    const bsz = portrait ? 36 : 26;
+    list.forEach((b, i) => { b.s = bsz; b.x = vx(sel.x) + CELL - bsz - 2; b.y = vy(sel.y) + 2 + i * (bsz + 2); });
     return list;
   }
   const flip = () => mode === 'online' && !!ol && ol.side === 1;
@@ -654,11 +720,11 @@
         ctx.beginPath();
         for (let i = 0; i < 16; i++) {
           const a = i * Math.PI / 8, rad = i % 2 ? 5 : 10;
-          const px = b.x + 13 + Math.cos(a) * rad, py = b.y + 13 + Math.sin(a) * rad;
+          const px = b.x + b.s / 2 + Math.cos(a) * rad * b.s / 26, py = b.y + b.s / 2 + Math.sin(a) * rad * b.s / 26;
           if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py);
         }
         ctx.closePath(); ctx.fillStyle = '#fff'; ctx.fill();
-      } else txt(b.glyph, b.x + 13, b.y + 20, 18, '#fff', 'center');
+      } else txt(b.glyph, b.x + b.s / 2, b.y + b.s * 0.77, b.s * 0.7, '#fff', 'center');
     }
     for (const o of opts) {
       if (o.click && o.cost > 0 && o.kind !== 'spawn') txt(String(o.cost), vx(o.click.x) + CELL - 6, vy(o.click.y) + CELL - 6, 18, '#fff', 'right');
@@ -676,6 +742,7 @@
       ctx.strokeStyle = (f.kind === 'boom' ? 'rgba(255,140,30,' : 'rgba(255,255,255,') + (1 - k) + ')';
       ctx.lineWidth = 8 * (1 - k) + 1; ctx.stroke();
     }
+    if (portrait) { drawPortraitUI(placing); return; }
     if (placing) {
       drawSidePanels(true);
       return;
@@ -715,6 +782,9 @@
     drawRight(human);
   }
 
+  function playerName(pi) {
+    return mode === 'online' && ol ? (pi === ol.side ? 'You' : '') + (ol.names[pi] ? (pi === ol.side ? ' (' + ol.names[pi] + ')' : ol.names[pi]) : C.NAMES[pi]) : mode === 'ai' ? (botInfo ? (pi === 0 ? 'You' + (Online.profile ? ' (' + Online.profile.username + ')' : '') : botInfo.name) : (pi === 0 ? 'You' : 'Computer')) : C.NAMES[pi];
+  }
   function playerBar(pi, y) {
     const g = G(), P = g.players[pi];
     const rx = RP.x + 16, w = RP.w - 32;
@@ -724,8 +794,7 @@
     slot(rx + 16, y + 14, 56, 56, '#1f1e1b');
     sprite('villager', rx + 44, y + 43, 46);
     rr(rx + 16, y + 14, 56, 56, 6); ctx.lineWidth = 3; ctx.strokeStyle = PCOL[pi]; ctx.stroke();
-    const name = mode === 'online' && ol ? (pi === ol.side ? 'You' : '') + (ol.names[pi] ? (pi === ol.side ? ' (' + ol.names[pi] + ')' : ol.names[pi]) : C.NAMES[pi]) : mode === 'ai' ? (botInfo ? (pi === 0 ? 'You' + (Online.profile ? ' (' + Online.profile.username + ')' : '') : botInfo.name) : (pi === 0 ? 'You' : 'Computer')) : C.NAMES[pi];
-    txt(name, rx + 86, y + 38, 22, TX, 'left');
+    txt(playerName(pi), rx + 86, y + 38, 22, TX, 'left');
     txt('Hand ' + P.hand.length + '  \u00B7  Deck ' + P.deck.length, rx + 86, y + 62, 15, DIM, 'left');
     if (clock.on) {
       const ms = clock.ms[pi];
@@ -735,6 +804,9 @@
     } else if (active) { ctx.beginPath(); ctx.arc(rx + w - 20, y + 20, 6, 0, Math.PI * 2); ctx.fillStyle = GREEN; ctx.fill(); }
   }
 
+  function statusText(placing) {
+    return placing ? (mode === 'online' && placeFor !== mySide() ? 'Waiting for the opponent to place their Villager...' : 'Place your Villager (king) on a free square in your spawn zone.') : (msg && Date.now() - msgT < 8000 ? msg : '');
+  }
   const bottomSide = () => (mode === 'online' && ol ? ol.side : 0);
   function drawRight(human) {
     const g = G();
@@ -742,7 +814,7 @@
     playerBar(1 - bottomSide(), RP.y + 14);
     playerBar(bottomSide(), RP.y + RP.h - 14 - 56 - 12 - 84);
     const placing = screen === 'place';
-    const text = placing ? (mode === 'online' && placeFor !== mySide() ? 'Waiting for the opponent to place their Villager...' : 'Place your Villager (king) on a free square in your spawn zone.') : (msg && Date.now() - msgT < 8000 ? msg : '');
+    const text = statusText(placing);
     if (text) {
       slot(rx, RP.y + 116, w, 120, '#2d2b28');
       wrap(text, rx + 16, RP.y + 150, w - 32, 18, 24, TX);
@@ -750,6 +822,82 @@
     button(rx, RP.y + 256, w, 48, 'Menu', () => { confirmMenu = true; }, { size: 18 });
     button(rx, RP.y + RP.h - 14 - 56, w, 56, 'End Turn', endTurn,
       { enabled: !placing && human && !pass && g.winner === null && !aiBusy, size: 26, col: '#81b64c', hot: '#95c95d' });
+  }
+
+  /* ---- portrait play screen: opponent bar, board, status line, hand, buttons, own bar (with mana lamps) ---- */
+  const PX = 50, PW = 800;
+  function drawLamp(x, y, size, lit, off, hl) {
+    const im = img[lit ? 'redstone_lamp_on' : 'redstone_lamp'];
+    ctx.imageSmoothingEnabled = false;
+    if (im && im.complete && im.naturalWidth) ctx.drawImage(im, x, y, size, size);
+    else rect(x, y, size, size, lit ? '#e0a050' : '#4a3a2a');
+    if (off) rect(x, y, size, size, 'rgba(8,10,22,0.6)');
+    if (hl) rect(x, y, size, size, 'rgba(255,120,20,0.45)', '#ffb347', 3);
+    else rect(x, y, size, size, null, '#000', 2);
+  }
+  function fitTxt(s, x, y, maxW, size, color) {
+    let sz = size;
+    setFont(sz);
+    while (sz > 14 && ctx.measureText(s).width > maxW) { sz -= 1; setFont(sz); }
+    txt(s, x, y, sz, color, 'left');
+  }
+  function portraitBar(pi, y, own, placing) {
+    const g = G(), P = g.players[pi];
+    const h = own ? 68 : 62, w = PW, x = PX;
+    const active = g.cur === pi && g.winner === null && !placing;
+    rr(x, y, w, h, 8); ctx.fillStyle = active ? '#3d3a37' : '#2d2b28'; ctx.fill();
+    if (active) { ctx.fillStyle = GREEN; ctx.fillRect(x, y + 8, 4, h - 16); }
+    const is = h - 16;
+    slot(x + 12, y + 8, is, is, '#1f1e1b');
+    sprite('villager', x + 12 + is / 2, y + h / 2, is - 8);
+    rr(x + 12, y + 8, is, is, 6); ctx.lineWidth = 3; ctx.strokeStyle = PCOL[pi]; ctx.stroke();
+    const tx = x + is + 26, nameW = own ? 230 : 380;
+    fitTxt(playerName(pi), tx, y + 29, nameW, 26, TX);
+    const showMana = own && !placing;
+    txt(showMana ? 'Mana ' + P.mana + '/' + P.maxMana : 'Hand ' + P.hand.length + '  \u00B7  Deck ' + P.deck.length, tx, y + h - 12, 22, showMana ? '#ffd27a' : DIM, 'left');
+    let endX = x + w - 10;
+    if (clock.on) {
+      const ms = clock.ms[pi];
+      rr(endX - 120, y + (h - 48) / 2, 120, 48, 6);
+      ctx.fillStyle = active ? '#fff' : '#1f1e1b'; ctx.fill();
+      txt(fmtClock(ms), endX - 60, y + h / 2 + 11, 32, active ? (ms < 30000 ? '#c0392b' : '#262522') : (ms < 30000 ? '#e0584b' : DIM), 'center');
+      endX -= 132;
+    }
+    if (showMana) {
+      const n = Math.max(6, P.maxMana), gap = 4, x0 = tx + nameW + 12;
+      const size = Math.min(44, Math.floor((endX - x0 - (n - 1) * gap) / n));
+      let cost = hoverCost;
+      if (!cost && spawnCard !== null) cost = (C.DEF[P.hand[spawnCard]] || { cost: 0 }).cost;
+      cost = Math.min(cost, P.mana);
+      if (size >= 20) for (let i = 0; i < n; i++) {
+        const lit = i < P.mana;
+        drawLamp(x0 + i * (size + gap), y + (h - size) / 2, size, lit, i >= P.maxMana, lit && cost > 0 && i >= P.mana - cost);
+      }
+    }
+  }
+  function drawPortraitUI(placing) {
+    const g = G();
+    const bs = bottomSide();
+    portraitBar(1 - bs, 4, false, placing);
+    portraitBar(bs, 1522, true, placing);
+    const text = statusText(placing);
+    slot(PX, 1280, PW, 44, '#2d2b28');
+    if (text) {
+      ctx.save();
+      ctx.beginPath(); ctx.rect(PX, 1280, PW, 44); ctx.clip();
+      wrap(text, PX + 12, 1299, PW - 24, 21, 21, TX);
+      ctx.restore();
+    }
+    if (!placing) drawHand();
+    let d = hoverDef;
+    if (!d && sel && sel.alive) d = sel.def;
+    if (!d && spawnCard !== null) d = C.DEF[g.players[viewer()].hand[spawnCard]];
+    curInfo = d || null;
+    const human = isHumanTurn();
+    button(PX, 1436, 150, 80, 'Menu', () => { confirmMenu = true; }, { size: 26 });
+    button(PX + 160, 1436, 150, 80, 'Info', () => { if (curInfo) { infoDef = curInfo; infoOpen = true; } }, { enabled: !!d && !placing, size: 26 });
+    button(PX + 320, 1436, 480, 80, 'End Turn', endTurn,
+      { enabled: !placing && human && !pass && g.winner === null && !aiBusy, size: 30, col: '#81b64c', hot: '#95c95d' });
   }
 
   function afterAction() {
@@ -772,6 +920,11 @@
   // hand: a vertical column to the right of the board, mirroring the mana gauge
   function cardRects() {
     const P = G().players[viewer()];
+    if (portrait) {
+      const n = P.hand.length, gp = 6;
+      const cw = Math.min(114, Math.floor((PW - Math.max(0, n - 1) * gp) / Math.max(n, 1)));
+      return P.hand.map((id, i) => ({ id, i, x: PX + i * (cw + gp), y: 1330, w: cw, h: 100 }));
+    }
     const n = P.hand.length, gap = 6;
     const ch = Math.min(74, Math.floor((ROWS * CELL - Math.max(0, n - 1) * gap) / Math.max(n, 1)));
     return P.hand.map((id, i) => ({ id, i, x: HP.x + 10, y: BY + i * (ch + gap), w: HP.w - 20, h: ch }));
@@ -788,6 +941,19 @@
       if (over) { hov = d; if (aff) hoverCostNext = d.cost; }
       slot(c.x, c.y, c.w, c.h, over ? '#4a4744' : aff ? '#3d3a37' : '#2d2b28');
       if (sl) { rr(c.x - 2, c.y - 2, c.w + 4, c.h + 4, 8); ctx.lineWidth = 3; ctx.strokeStyle = GREEN; ctx.stroke(); }
+      if (portrait) {
+        ctx.globalAlpha = aff ? 1 : 0.5;
+        sprite(d.id, c.x + c.w / 2, c.y + 46, Math.min(60, c.w - 16));
+        ctx.globalAlpha = 1;
+        ctx.beginPath(); ctx.arc(c.x + 20, c.y + 20, 15, 0, Math.PI * 2);
+        ctx.fillStyle = aff ? '#e8a43a' : '#4a4744'; ctx.fill();
+        txt(String(d.cost), c.x + 20, c.y + 28, 21, aff ? '#2b1a00' : '#8a8885', 'center');
+        setFont(19);
+        const pw = ctx.measureText(d.name).width, pf = pw > c.w - 8 ? Math.max(12, Math.floor(19 * (c.w - 8) / pw)) : 19;
+        txt(d.name, c.x + c.w / 2, c.y + c.h - 9, pf, aff ? TX : '#7d7b78', 'center');
+        if (live) btns.push({ x: c.x, y: c.y, w: c.w, h: c.h, enabled: true, fn: () => selectCard(c.i) });
+        continue;
+      }
       const cy = c.y + c.h / 2;
       ctx.globalAlpha = aff ? 1 : 0.5;
       sprite(d.id, c.x + 62, cy, Math.min(54, c.h - 10));
@@ -802,7 +968,7 @@
       if (live) btns.push({ x: c.x, y: c.y, w: c.w, h: c.h, enabled: true, fn: () => selectCard(c.i) });
     }
     if (hov) hoverNext = hov;
-    if (!P.hand.length) txt('Hand empty', HP.x + HP.w / 2, 60, 18, DIM, 'center');
+    if (!P.hand.length) txt('Hand empty', portrait ? W / 2 : HP.x + HP.w / 2, portrait ? 1390 : 60, portrait ? 24 : 18, DIM, 'center');
   }
 
   function selectCard(i) {
@@ -850,11 +1016,23 @@
   /* ---- overlays ---- */
   function drawOverlays() {
     const g = screen === 'play' || screen === 'place' ? G() : null;
+    const oy = portrait ? 350 : 0;
+    if (infoOpen && infoDef && portrait && !pass) {
+      rect(0, 0, W, H, 'rgba(0,0,0,0.78)');
+      btns.push({ x: 0, y: 0, w: W, h: H, enabled: true, fn: () => { infoOpen = false; } });
+      panel(40, 140, 820, 1100);
+      ctx.save();
+      ctx.translate(72, 175); ctx.scale(1.8, 1.8);
+      drawInfo(infoDef, 0, 0, (820 - 64) / 1.8);
+      ctx.restore();
+      button(250, 1150, 400, 70, 'Close', () => { infoOpen = false; }, { size: 28 });
+      return;
+    }
     if (pass) {
       rect(0, 0, W, H, 'rgba(6,6,12,0.97)');
-      txt(pass.text, W / 2, 400, 52, '#fff', 'center');
-      txt('Pass the device. The other player should look away.', W / 2, 450, 24, '#aaa', 'center');
-      button(600, 500, 400, 80, 'Ready', () => { const cb = pass.cb; pass = null; cb(); }, { size: 32, col: '#81b64c', hot: '#95c95d' });
+      txt(pass.text, W / 2, 400 + oy, portrait ? 40 : 52, '#fff', 'center');
+      txt('Pass the device. The other player should look away.', W / 2, 450 + oy, portrait ? 22 : 24, '#aaa', 'center');
+      button(W / 2 - 200, 500 + oy, 400, 80, 'Ready', () => { const cb = pass.cb; pass = null; cb(); }, { size: 32, col: '#81b64c', hot: '#95c95d' });
       return;
     }
     if (g && g.winner !== null) {
@@ -866,23 +1044,23 @@
       const rated = online || botm;
       const mineWon = online ? g.winner === ol.side : g.winner === 0;
       const t = rated ? (mineWon ? 'You win!' : 'You lose') : human ? (g.winner === 0 ? 'You win!' : 'Computer wins') : C.NAMES[g.winner] + ' wins!';
-      txt(t, W / 2, 370, 100, (rated ? mineWon : g.winner === 0) ? '#8fb2ff' : '#ff8d86', 'center');
-      txt(g.timeout ? 'Someone ran out of time.' : g.resigned ? 'A player resigned.' : 'The enemy Villager was eliminated.', W / 2, 420, 26, '#ddd', 'center');
+      txt(t, W / 2, 370 + oy, 100, (rated ? mineWon : g.winner === 0) ? '#8fb2ff' : '#ff8d86', 'center');
+      txt(g.timeout ? 'Someone ran out of time.' : g.resigned ? 'A player resigned.' : 'The enemy Villager was eliminated.', W / 2, 420 + oy, 26, '#ddd', 'center');
       if (rated) {
         const r = online ? ol.row : botInfo.row;
         if (r && r.status === 'finished') {
           const line = r.winner === null || r.winner === undefined ? 'Result disputed - no rating change.'
             : 'Rating ' + (mineWon ? '+' : '-') + (r.rating_delta || 0) + (Online.profile ? '  (now ' + Online.profile.rating + ')' : '');
-          txt(line, W / 2, 462, 24, ACC, 'center');
-        } else txt('Saving the result...', W / 2, 462, 20, DIM, 'center');
-        button(685, 490, 230, 70, 'Menu', toMenu, { size: 28 });
+          txt(line, W / 2, 462 + oy, 24, ACC, 'center');
+        } else txt('Saving the result...', W / 2, 462 + oy, 20, DIM, 'center');
+        button(W / 2 - 115, 490 + oy, 230, 70, 'Menu', toMenu, { size: 28 });
       } else {
-        button(560, 470, 230, 70, 'Rematch', () => beginMatch(), { size: 28 });
-        button(810, 470, 230, 70, 'Menu', toMenu, { size: 28 });
+        button(W / 2 - 240, 470 + oy, 230, 70, 'Rematch', () => beginMatch(), { size: 28 });
+        button(W / 2 + 10, 470 + oy, 230, 70, 'Menu', toMenu, { size: 28 });
       }
       if (lastAward) {
-        txt('+' + lastAward.gain + ' XP  \u00B7  Level ' + lastAward.level, W / 2, 610, 26, ACC, 'center');
-        if (lastAward.unlocked.length) txt('Unlocked: ' + lastAward.unlocked.join(', '), W / 2, 650, 26, GREEN, 'center');
+        txt('+' + lastAward.gain + ' XP  \u00B7  Level ' + lastAward.level, W / 2, 610 + oy, 26, ACC, 'center');
+        if (lastAward.unlocked.length) txt('Unlocked: ' + lastAward.unlocked.join(', '), W / 2, 650 + oy, 26, GREEN, 'center');
       }
       return;
     }
@@ -890,15 +1068,15 @@
       rect(0, 0, W, H, 'rgba(0,0,0,0.7)');
       const onl = mode === 'online' && ol && G().winner === null;
       const rs = onl || (mode === 'ai' && !!botInfo && G().winner === null);
-      txt(rs ? 'Resign the match?' : 'Leave the match?', W / 2, 380, 54, '#fff', 'center');
-      button(560, 430, 230, 70, rs ? 'Resign' : 'Leave', onl ? resignOnline : toMenu, { size: 28, col: '#b83b32', hot: '#cf4b41' });
-      button(810, 430, 230, 70, 'Keep playing', () => { confirmMenu = false; }, { size: 24 });
+      txt(rs ? 'Resign the match?' : 'Leave the match?', W / 2, 380 + oy, 54, '#fff', 'center');
+      button(W / 2 - 240, 430 + oy, 230, 70, rs ? 'Resign' : 'Leave', onl ? resignOnline : toMenu, { size: 28, col: '#b83b32', hot: '#cf4b41' });
+      button(W / 2 + 10, 430 + oy, 230, 70, 'Keep playing', () => { confirmMenu = false; }, { size: 24 });
       return;
     }
     if (paused) {
       rect(0, 0, W, H, 'rgba(0,0,0,0.7)');
-      txt('Paused', W / 2, 420, 80, '#fff', 'center');
-      txt('Press P to continue', W / 2, 470, 26, '#ccc', 'center');
+      txt('Paused', W / 2, 420 + oy, 80, '#fff', 'center');
+      txt('Press P to continue', W / 2, 470 + oy, 26, '#ccc', 'center');
     }
   }
 
@@ -922,6 +1100,7 @@
   }
 
   function frame() {
+    if (window.innerWidth !== lastVw || window.innerHeight !== lastVh) layout();
     tickClock();
     btns = [];
     hoverBtnPreview = null;
@@ -948,6 +1127,14 @@
   }
   canvas.addEventListener('pointermove', e => {
     mouse = pos(e);
+    if (touchDrag) {
+      const dy = mouse.y - touchDrag.y0;
+      if (Math.abs(dy) > 14) touchDrag.moved = true;
+      if (touchDrag.moved) {
+        if (screen === 'help') helpScroll = Math.max(0, Math.min(helpMax, touchDrag.start - dy));
+        else deckScroll = Math.max(0, touchDrag.start - dy);
+      }
+    }
     if (sbDrag && sbGeom) {
       const track = DECK_VIEW.h - sbGeom.th;
       deckScroll = Math.max(0, Math.min(sbGeom.maxScroll, sbDrag.start + (mouse.y - sbDrag.y0) * sbGeom.maxScroll / track));
@@ -958,7 +1145,15 @@
     e.preventDefault();
     deckScroll += e.deltaY * (e.deltaMode === 1 ? 30 : 1);
   }, { passive: false });
-  window.addEventListener('pointerup', () => { sbDrag = null; });
+  window.addEventListener('pointerup', e => {
+    sbDrag = null;
+    if (touchDrag) {
+      const t = touchDrag;
+      touchDrag = null;
+      if (!t.moved && e.pointerType === 'touch') { mouse = pos(e); press(e); sbDrag = null; }
+    }
+  });
+  window.addEventListener('pointercancel', () => { sbDrag = null; touchDrag = null; });
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('pointerup', e => {
     if (e.button !== 2 || !drag) return;
@@ -976,6 +1171,14 @@
   });
   canvas.addEventListener('pointerdown', e => {
     mouse = pos(e);
+    // lists that scroll by dragging: a touch only counts as a tap when it is released without moving
+    if (e.pointerType === 'touch' && (screen === 'deck' || screen === 'help') && !infoOpen) {
+      touchDrag = { y0: mouse.y, start: screen === 'help' ? helpScroll : deckScroll, moved: false };
+      return;
+    }
+    press(e);
+  });
+  function press(e) {
     if (e.button === 2) {
       if ((screen === 'play') && !pass && !confirmMenu && !paused) {
         const cell = cellAt(mouse.x, mouse.y);
@@ -1000,7 +1203,7 @@
       const cell = cellAt(mouse.x, mouse.y);
       if (cell) { arrows = []; marks = []; onBoardClick(cell); }
     }
-  });
+  }
   // a finger lifting fires pointerleave: keep the last touched square so its info stays visible
   canvas.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; mouse = { x: -1, y: -1 }; drag = null; });
   window.addEventListener('keydown', e => {
@@ -1173,6 +1376,8 @@
     if (queue && queue.kind === 'queue' && queue.id && !queue.found && !queue.botCalled && Date.now() - queue.t0 > 20000) startBotFallback();
     const dots = '.'.repeat(1 + Math.floor(Date.now() / 400) % 3);
     const found = !!(queue && queue.found);
+    const oy = portrait ? 350 : 0;
+    ctx.save(); ctx.translate(0, oy);
     txt(found ? 'Opponent found!' : 'Matching players' + dots, W / 2, 300, 44, found ? GREEN : '#fff', 'center');
     const tl = timeCtl ? timeCtl / 60 + ' min per player' : 'untimed';
     txt('Time control: ' + tl, W / 2, 346, 20, DIM, 'center');
@@ -1183,7 +1388,8 @@
       txt(queue.code, W / 2, 510, 84, ACC, 'center');
       txt('Send this code to your friend. They pick "Join code".', W / 2, 556, 20, DIM, 'center');
     }
-    button(650, 620, 300, 64, 'Cancel', cancelQueue, { size: 24, enabled: !found });
+    ctx.restore();
+    button(W / 2 - 150, 620 + oy, 300, 64, 'Cancel', cancelQueue, { size: 24, enabled: !found });
   }
 
   /* ---- live match ---- */
@@ -1295,6 +1501,7 @@
     Online.onChange(() => refreshResume());
   }
 
+  layout();
   post({ type: 'ready' });
   requestAnimationFrame(frame);
 })();
